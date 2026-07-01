@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:campus_twin/login.dart';
+import 'package:campus_twin/welcome_page.dart';
 import 'package:campus_twin/theme.dart';
 
 void main() {
@@ -15,8 +15,8 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'CampusTwin',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
-      home: const LoginPage(),
+      theme: AppTheme.lightTheme,
+      home: const WelcomePage(),
     );
   }
 }
