@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:campus_twin/theme.dart';
 import 'package:campus_twin/register.dart';
 import 'package:campus_twin/app_widget.dart';
+import 'package:campus_twin/twinDashboard.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -42,8 +43,11 @@ class _LoginPageState extends State<LoginPage> {
     if (!mounted) return;
     setState(() => _isLoading = false);
 
-    // Navigate to home / dashboard on success.
-    // Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomePage()));
+    // Navigate to the Twin Dashboard on success.
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const DashboardPage()),
+    );
   }
 
   void _handleGoogleSignIn() {
