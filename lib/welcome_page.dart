@@ -50,61 +50,72 @@ class WelcomePage extends StatelessWidget {
             ),
 
             SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 28),
-                child: Column(
-                  children: [
-                    const Spacer(flex: 3),
-                    const AuthBrandMark(size: 96),
-                    const SizedBox(height: 32),
-                    const Text(
-                      'Meet your\ndigital twin.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 34,
-                        fontWeight: FontWeight.w800,
-                        height: 1.2,
-                        letterSpacing: -0.6,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 28),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight,
+                      ),
+                      child: IntrinsicHeight(
+                        child: Column(
+                          children: [
+                            const SizedBox(height: 24),
+                            const AuthBrandMark(size: 96),
+                            const SizedBox(height: 32),
+                            const Text(
+                              'Meet your\ndigital twin.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 34,
+                                fontWeight: FontWeight.w800,
+                                height: 1.2,
+                                letterSpacing: -0.6,
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            const Text(
+                              'CampusTwin unifies your studies, habits, stress and '
+                              'expenses into one AI-powered system — so it can guide '
+                              'you, not just track you.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 15,
+                                height: 1.45,
+                              ),
+                            ),
+                            const SizedBox(height: 26),
+                            const Wrap(
+                              alignment: WrapAlignment.center,
+                              spacing: 10,
+                              runSpacing: 10,
+                              children: [
+                                AuthFeatureBadge(
+                                  icon: Icons.auto_awesome_outlined,
+                                  label: 'AI recommendations',
+                                ),
+                                AuthFeatureBadge(
+                                  icon: Icons.insights_outlined,
+                                  label: 'Stress prediction',
+                                ),
+                                AuthFeatureBadge(
+                                  icon: Icons.calendar_today_outlined,
+                                  label: 'Smart scheduling',
+                                ),
+                              ],
+                            ),
+                            const Spacer(),
+                            _buildActions(context),
+                            const SizedBox(height: 28),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    const Text(
-                      'CampusTwin unifies your studies, habits, stress and '
-                      'expenses into one AI-powered system — so it can guide '
-                      'you, not just track you.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 15,
-                        height: 1.45,
-                      ),
-                    ),
-                    const SizedBox(height: 26),
-                    const Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        AuthFeatureBadge(
-                          icon: Icons.auto_awesome_outlined,
-                          label: 'AI recommendations',
-                        ),
-                        AuthFeatureBadge(
-                          icon: Icons.insights_outlined,
-                          label: 'Stress prediction',
-                        ),
-                        AuthFeatureBadge(
-                          icon: Icons.calendar_today_outlined,
-                          label: 'Smart scheduling',
-                        ),
-                      ],
-                    ),
-                    const Spacer(flex: 4),
-                    _buildActions(context),
-                    const SizedBox(height: 28),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
           ],
