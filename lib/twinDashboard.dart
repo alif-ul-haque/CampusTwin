@@ -42,6 +42,7 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   bool _isLoading = true;
+  int _selectedTabIndex = 0;
 
   String _studentName = 'Alif';
   StressLevel _stressLevel = StressLevel.medium;
@@ -50,6 +51,14 @@ class _DashboardPageState extends State<DashboardPage> {
   double _budgetRemaining = 2400;
   List<ScheduleItem> _todaySchedule = [];
   List<DeadlineItem> _deadlines = [];
+
+  final List<_DashboardTabItem> _tabs = const [
+    _DashboardTabItem(label: 'Home', icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard_rounded),
+    _DashboardTabItem(label: 'Planner', icon: Icons.edit_calendar_outlined, activeIcon: Icons.edit_calendar_rounded),
+    _DashboardTabItem(label: 'Habits', icon: Icons.local_fire_department_outlined, activeIcon: Icons.local_fire_department_rounded),
+    _DashboardTabItem(label: 'Budget', icon: Icons.account_balance_wallet_outlined, activeIcon: Icons.account_balance_wallet_rounded),
+    _DashboardTabItem(label: 'Assistant', icon: Icons.smart_toy_outlined, activeIcon: Icons.smart_toy_rounded),
+  ];
 
   @override
   void initState() {
@@ -107,44 +116,234 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    final showTwinnyButton = _selectedTabIndex != 4;
+
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.purple))
-          : SafeArea(
-              child: RefreshIndicator(
-                color: AppColors.purple,
-                onRefresh: _loadDashboardData,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 110),
-                  children: [
-                    _buildHeaderCard(),
-                    const SizedBox(height: 18),
-                    _buildQuickStats(),
-                    const SizedBox(height: 26),
-                    _buildSectionTitle("Today's Schedule"),
-                    const SizedBox(height: 10),
-                    _buildTodaySchedule(),
-                    const SizedBox(height: 26),
-                    _buildSectionTitle('Upcoming Deadlines'),
-                    const SizedBox(height: 10),
-                    _buildDeadlines(),
-                  ],
+      body: _buildCurrentTabBody(),
+      floatingActionButton: showTwinnyButton
+          ? FloatingActionButton.extended(
+              onPressed: () {
+                // TODO: Navigate to AI Assistant chat screen
+                // Navigator.push(context, MaterialPageRoute(builder: (_) => const AiAssistantPage()));
+              },
+              backgroundColor: AppColors.purple,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.smart_toy_outlined),
+              label: const Text(
+                'Ask Twinny',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            )
+          : null,
+      bottomNavigationBar: NavigationBar(
+        height: 72,
+        backgroundColor: AppColors.card,
+        indicatorColor: AppColors.purple.withValues(alpha: 0.12),
+        selectedIndex: _selectedTabIndex,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        onDestinationSelected: (index) {
+          setState(() {
+            _selectedTabIndex = index;
+          });
+        },
+        destinations: _tabs
+            .map(
+              (tab) => NavigationDestination(
+                icon: Icon(tab.icon),
+                selectedIcon: Icon(tab.activeIcon),
+                label: tab.label,
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+
+  Widget _buildCurrentTabBody() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.purple));
+    }
+
+    switch (_selectedTabIndex) {
+      case 0:
+        return SafeArea(
+          child: RefreshIndicator(
+            color: AppColors.purple,
+            onRefresh: _loadDashboardData,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 110),
+              children: [
+                _buildHeaderCard(),
+                const SizedBox(height: 18),
+                _buildQuickStats(),
+                const SizedBox(height: 26),
+                _buildSectionTitle("Today's Schedule"),
+                const SizedBox(height: 10),
+                _buildTodaySchedule(),
+                const SizedBox(height: 26),
+                _buildSectionTitle('Upcoming Deadlines'),
+                const SizedBox(height: 10),
+                _buildDeadlines(),
+              ],
+            ),
+          ),
+        );
+      case 1:
+        return _buildFeatureScreen(
+          title: 'Study Planner',
+          subtitle: 'Organize classes, revision slots, and assignment plans.',
+          icon: Icons.edit_calendar_rounded,
+          highlights: const [
+            'Create weekly study blocks',
+            'Track subject-wise progress',
+            'Sync planner with class routine',
+          ],
+        );
+      case 2:
+        return _buildFeatureScreen(
+          title: 'Habit Tracker',
+          subtitle: 'Build consistent routines to improve focus and wellness.',
+          icon: Icons.local_fire_department_rounded,
+          highlights: const [
+            'Add daily habits and reminders',
+            'Track streaks and consistency',
+            'See missed habits quickly',
+          ],
+        );
+      case 3:
+        return _buildFeatureScreen(
+          title: 'Budget Tracker',
+          subtitle: 'Manage your campus expenses and monthly budget goals.',
+          icon: Icons.account_balance_wallet_rounded,
+          highlights: const [
+            'Log spending by category',
+            'Set monthly budget caps',
+            'Monitor remaining balance',
+          ],
+        );
+      case 4:
+        return _buildFeatureScreen(
+          title: 'Twinny Assistant',
+          subtitle: 'Ask for study help, reminders, and personalized suggestions.',
+          icon: Icons.smart_toy_rounded,
+          highlights: const [
+            'Instant study support',
+            'Smart schedule suggestions',
+            'Stress-aware recommendations',
+          ],
+        );
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _buildFeatureScreen({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required List<String> highlights,
+  }) {
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: AppColors.border),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x0F0F172A),
+                  blurRadius: 20,
+                  offset: Offset(0, 10),
                 ),
+              ],
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: AppColors.purple.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(icon, color: AppColors.purple, size: 28),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 13.5,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          _buildSectionTitle('What you can do here'),
+          const SizedBox(height: 10),
+          ...highlights.map((point) => _buildFeaturePoint(point)),
+          const SizedBox(height: 12),
+          _emptyState('Feature screen ready. Connect this tab with your backend or detailed page next.'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeaturePoint(String text) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: AppColors.purple,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
               ),
             ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          // TODO: Navigate to AI Assistant chat screen
-          // Navigator.push(context, MaterialPageRoute(builder: (_) => const AiAssistantPage()));
-        },
-        backgroundColor: AppColors.purple,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.smart_toy_outlined),
-        label: const Text(
-          'Ask Twinny',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -474,4 +673,16 @@ class _DashboardPageState extends State<DashboardPage> {
     const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return names[month - 1];
   }
+}
+
+class _DashboardTabItem {
+  final String label;
+  final IconData icon;
+  final IconData activeIcon;
+
+  const _DashboardTabItem({
+    required this.label,
+    required this.icon,
+    required this.activeIcon,
+  });
 }
