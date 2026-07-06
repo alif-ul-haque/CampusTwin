@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:campus_twin/theme.dart';
 import 'package:campus_twin/planner_page.dart';
+import 'package:campus_twin/habitTracker.dart';
 import 'package:campus_twin/welcome_page.dart';
 
 // =============================================================================
@@ -194,7 +195,9 @@ class _DashboardRepository {
 // =============================================================================
 
 class DashboardPage extends StatefulWidget {
-  const DashboardPage({super.key});
+  const DashboardPage({super.key, this.initialTabIndex = 0});
+
+  final int initialTabIndex;
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -202,7 +205,7 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> with SingleTickerProviderStateMixin {
   bool _isLoading = true;
-  int _selectedTabIndex = 0;
+  late int _selectedTabIndex;
   late final AnimationController _borderAnimController;
   final _chatController = TextEditingController();
   final _chatScrollController = ScrollController();
@@ -210,6 +213,7 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
+    _selectedTabIndex = widget.initialTabIndex.clamp(0, 4);
     _borderAnimController = AnimationController(vsync: this, duration: const Duration(seconds: 4))..repeat();
     _loadData();
   }
@@ -227,6 +231,12 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
     _DashboardRepository.initChat();
     await Future.delayed(const Duration(milliseconds: 300));
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  void _openHabitTracker() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const HabitTrackerPage()),
+    );
   }
 
   void _showProfile() {
@@ -250,7 +260,11 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
         },
         onNavigateToHabits: () {
           Navigator.of(context).pop();
-          setState(() => _selectedTabIndex = 2);
+          _openHabitTracker();
+        },
+        onNavigateToDashboard: () {
+          Navigator.of(context).pop();
+          setState(() => _selectedTabIndex = 0);
         },
         onNavigateToBudget: () {
           Navigator.of(context).pop();
@@ -355,7 +369,13 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                   indicatorShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                   selectedIndex: _selectedTabIndex,
                   labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-                  onDestinationSelected: (i) => setState(() => _selectedTabIndex = i),
+                  onDestinationSelected: (i) {
+                    if (i == 2) {
+                      _openHabitTracker();
+                      return;
+                    }
+                    setState(() => _selectedTabIndex = i);
+                  },
                   destinations: _tabs.map((t) => NavigationDestination(
                     icon: Icon(t.icon), selectedIcon: Icon(t.activeIcon, color: AppColors.purple), label: t.label,
                   )).toList(),
@@ -502,7 +522,7 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
         Expanded(child: _StatTile(
           icon: Icons.local_fire_department_outlined, label: 'Streak',
           value: '${_DashboardRepository.habitStreak} days',
-          accent: const Color(0xFF06B6D4), onTap: () => setState(() => _selectedTabIndex = 2),
+          accent: const Color(0xFF06B6D4), onTap: _openHabitTracker,
         )),
         const SizedBox(width: 10),
         Expanded(child: _StatTile(
@@ -1132,6 +1152,7 @@ class _ProfileSheet extends StatelessWidget {
   final VoidCallback onSignOut;
   final VoidCallback onNavigateToPlanner;
   final VoidCallback onNavigateToHabits;
+  final VoidCallback onNavigateToDashboard;
   final VoidCallback onNavigateToBudget;
 
   const _ProfileSheet({
@@ -1139,6 +1160,7 @@ class _ProfileSheet extends StatelessWidget {
     required this.onSignOut,
     required this.onNavigateToPlanner,
     required this.onNavigateToHabits,
+    required this.onNavigateToDashboard,
     required this.onNavigateToBudget,
   });
 
@@ -1285,7 +1307,7 @@ class _ProfileSheet extends StatelessWidget {
                 const SizedBox(height: 8),
                 _quickLink(Icons.account_balance_wallet_rounded, 'Expense Manager', 'View budget & spending', const Color(0xFF10B981), onNavigateToBudget),
                 const SizedBox(height: 8),
-                _quickLink(Icons.dashboard_rounded, 'Twin Dashboard', 'Back to home overview', AppColors.purple, () {}),
+                _quickLink(Icons.dashboard_rounded, 'Twin Dashboard', 'Back to home overview', AppColors.purple, onNavigateToDashboard),
               ],
             ),
           ),
