@@ -405,6 +405,7 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
 
   Widget _buildHomeTab() {
     return SafeArea(
+      bottom: false,
       child: RefreshIndicator(
         color: AppColors.purple,
         onRefresh: _loadData,
