@@ -111,7 +111,21 @@ class _DashboardRepository {
   static List<ScheduleItem> schedule = [];
   static List<DeadlineItem> deadlines = [];
 
+  // ── Chart data ──────────────────────────────────────────────────────
+  static List<double> weeklyHours = []; // Mon-Sun
+  static Map<String, double> subjectDistribution = {};
+
+  static void _initCharts() {
+    if (weeklyHours.isNotEmpty) return;
+    weeklyHours = [4, 6, 5, 3, 7, 2, 0];
+    subjectDistribution = {
+      'CSE301': 0.30, 'CSE402': 0.20, 'CSE501': 0.15,
+      'CSE303': 0.25, 'CSE302': 0.10,
+    };
+  }
+
   static void loadDashboard() {
+    _initCharts();
     if (schedule.isEmpty) {
       schedule = [
         const ScheduleItem(id: 's1', title: 'Database Systems Lecture', time: TimeOfDay(hour: 9, minute: 0), endTime: TimeOfDay(hour: 10, minute: 30), type: 'Class', location: 'Room 401'),
@@ -375,11 +389,13 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
         color: AppColors.purple,
         onRefresh: _loadData,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 110),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 110),
           children: [
             _buildHeader(),
-            const SizedBox(height: 18),
+            const SizedBox(height: 16),
             _buildQuickStats(),
+            const SizedBox(height: 20),
+            _buildVisualizationSection(),
             const SizedBox(height: 22),
             _sectionTitle('Today\'s Schedule', trailing: '${_DashboardRepository.schedule.where((s) => s.isCompleted).length}/${_DashboardRepository.schedule.length}'),
             const SizedBox(height: 10),
@@ -405,97 +421,68 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
     return _GlowCard(
       radius: 24,
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            GestureDetector(
-              onTap: _showProfile,
-              child: Container(
-                width: 52, height: 52,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [AppColors.purple, AppColors.purpleLight],
-                    begin: Alignment.topLeft, end: Alignment.bottomRight),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [BoxShadow(color: AppColors.purple.withValues(alpha: 0.25), blurRadius: 10, offset: const Offset(0, 4))],
-                ),
-                child: Center(
-                  child: Text(p.name.split(' ').map((e) => e[0]).take(2).join(),
-                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
-                ),
-              ),
-            ),
-            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('$greeting,', style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-                  const SizedBox(height: 1),
-                  Text(p.nickname,
-                    style: const TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.3)),
+                  Row(
+                    children: [
+                      Text('$greeting,', style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                      const SizedBox(width: 6),
+                      Text(p.nickname,
+                        style: const TextStyle(color: AppColors.textPrimary, fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -0.3)),
+                    ],
+                  ),
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      Icon(Icons.calendar_today_rounded, color: AppColors.textSecondary.withValues(alpha: 0.7), size: 12),
-                      const SizedBox(width: 5),
+                      Icon(Icons.calendar_today_rounded, color: AppColors.textSecondary.withValues(alpha: 0.7), size: 11),
+                      const SizedBox(width: 4),
                       Text('${_wd(now.weekday)}, ${_mn(now.month)} ${now.day}',
-                        style: TextStyle(color: AppColors.textSecondary.withValues(alpha: 0.7), fontSize: 12)),
+                        style: TextStyle(color: AppColors.textSecondary.withValues(alpha: 0.7), fontSize: 11.5)),
+                      const SizedBox(width: 14),
+                      GestureDetector(
+                        onTap: () { _DashboardRepository.cycleStress(); setState(() {}); },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: sc.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: sc.withValues(alpha: 0.25)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.bolt_rounded, color: sc, size: 11),
+                              const SizedBox(width: 2),
+                              Text(sl, style: TextStyle(color: sc, fontSize: 10, fontWeight: FontWeight.w700)),
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ],
               ),
             ),
-            Column(
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    _DashboardRepository.cycleStress();
-                    setState(() {});
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Stress: $_stressLabel(_DashboardRepository.stressLevel)'),
-                        behavior: SnackBarBehavior.floating, duration: const Duration(seconds: 1),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-                    );
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: sc.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: sc.withValues(alpha: 0.25)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.bolt_rounded, color: sc, size: 14),
-                        const SizedBox(width: 4),
-                        Text(sl, style: TextStyle(color: sc, fontSize: 11, fontWeight: FontWeight.w700)),
-                      ],
-                    ),
-                  ),
+            // Avatar — top right, tap → profile
+            GestureDetector(
+              onTap: _showProfile,
+              child: Container(
+                width: 48, height: 48,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(colors: [AppColors.purple, Color(0xFF7C3AED)],
+                    begin: Alignment.topLeft, end: Alignment.bottomRight),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [BoxShadow(color: AppColors.purple.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4))],
                 ),
-                const SizedBox(height: 6),
-                GestureDetector(
-                  onTap: _showProfile,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(colors: [AppColors.purple, Color(0xFF7C3AED)],
-                        begin: Alignment.topLeft, end: Alignment.bottomRight),
-                      borderRadius: BorderRadius.circular(999),
-                      boxShadow: [BoxShadow(color: AppColors.purple.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 3))],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.person_outline_rounded, color: Colors.white, size: 13),
-                        const SizedBox(width: 4),
-                        const Text('Profile', style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700)),
-                      ],
-                    ),
-                  ),
+                child: Center(
+                  child: Text(p.name.split(' ').map((e) => e[0]).take(2).join(),
+                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
                 ),
-              ],
+              ),
             ),
           ],
         ),
@@ -523,6 +510,176 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
           value: '৳${_DashboardRepository.budgetRemaining.toStringAsFixed(0)}',
           accent: const Color(0xFF10B981), onTap: () => setState(() => _selectedTabIndex = 3),
         )),
+      ],
+    );
+  }
+
+  // ── Visualization section: bar chart + donut chart ───────────────────
+
+  Widget _buildVisualizationSection() {
+    final hours = _DashboardRepository.weeklyHours;
+    final maxH = hours.reduce((a, b) => a > b ? a : b);
+    final totalH = hours.fold<double>(0, (s, h) => s + h);
+    final labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final dist = _DashboardRepository.subjectDistribution;
+    final distColors = [const Color(0xFF4F46E5), const Color(0xFF06B6D4), const Color(0xFFF59E0B), const Color(0xFF10B981), const Color(0xFF3B82F6)];
+
+    return Column(
+      children: [
+        // Weekly hours bar chart
+        _GlowCard(
+          radius: 20,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.purple.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.bar_chart_rounded, color: AppColors.purple, size: 18),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text('Weekly Study Hours', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                    const Spacer(),
+                    Text('$totalH hrs', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.purple)),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  height: 110,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: List.generate(7, (i) {
+                      final h = hours[i];
+                      final pct = maxH > 0 ? h / maxH : 0.0;
+                      final isToday = DateTime.now().weekday - 1 == i;
+                      return Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 3),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              Text(h == 0 ? '' : '${h.toInt()}h',
+                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
+                                  color: isToday ? AppColors.purple : AppColors.textSecondary.withValues(alpha: 0.6))),
+                              const SizedBox(height: 4),
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 400),
+                                height: pct * 60,
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [isToday ? AppColors.purple : AppColors.purple.withValues(alpha: 0.4),
+                                      isToday ? const Color(0xFF7C3AED) : AppColors.purpleLight.withValues(alpha: 0.3)],
+                                    begin: Alignment.bottomCenter, end: Alignment.topCenter,
+                                  ),
+                                  borderRadius: BorderRadius.circular(6),
+                                  boxShadow: isToday
+                                      ? [BoxShadow(color: AppColors.purple.withValues(alpha: 0.3), blurRadius: 6, offset: const Offset(0, 2))]
+                                      : null,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(labels[i],
+                                style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600,
+                                  color: isToday ? AppColors.purple : AppColors.textSecondary.withValues(alpha: 0.6))),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        // Subject distribution donut chart
+        _GlowCard(
+          radius: 20,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF06B6D4).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.pie_chart_rounded, color: Color(0xFF06B6D4), size: 18),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text('Subject Distribution', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    // Donut
+                    SizedBox(
+                      width: 100, height: 100,
+                      child: CustomPaint(
+                        painter: _DonutChartPainter(
+                          values: dist.values.toList(),
+                          colors: distColors,
+                        ),
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('${totalH.toInt()}h', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                              Text('total', style: TextStyle(fontSize: 9, color: AppColors.textSecondary.withValues(alpha: 0.7))),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    // Legend
+                    Expanded(
+                      child: Column(
+                        children: dist.entries.toList().asMap().entries.map((e) {
+                          final i = e.key;
+                          final entry = e.value;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Row(
+                              children: [
+                                Container(width: 10, height: 10,
+                                  decoration: BoxDecoration(
+                                    color: distColors[i % distColors.length],
+                                    borderRadius: BorderRadius.circular(3),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(entry.key,
+                                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                                ),
+                                Text('${(entry.value * 100).toInt()}%',
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textSecondary)),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -1424,4 +1581,35 @@ class _RotatingBorderPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _RotatingBorderPainter old) => old.t != t || old.colors != colors;
+}
+
+class _DonutChartPainter extends CustomPainter {
+  final List<double> values;
+  final List<Color> colors;
+  _DonutChartPainter({required this.values, required this.colors});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final total = values.fold(0.0, (a, b) => a + b);
+    if (total == 0) return;
+    final rect = Rect.fromLTWH(4, 4, size.width - 8, size.height - 8);
+    final strokeWidth = 18.0;
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    var start = -1.5708; // start from top
+    for (var i = 0; i < values.length; i++) {
+      final sweep = (values[i] / total) * 6.2832;
+      paint.color = colors[i % colors.length];
+      paint.shader = null;
+      canvas.drawArc(rect, start, sweep, false, paint);
+      start += sweep;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DonutChartPainter old) =>
+      old.values != values || old.colors != colors;
 }
