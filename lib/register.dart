@@ -91,7 +91,7 @@ class _RegisterPageState extends State<RegisterPage> {
                           children: [
                             const SizedBox(height: 8),
                             _buildBackButton(),
-                            const SizedBox(height: 22),
+                            const SizedBox(height: 10),
                             Center(
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(25), 
