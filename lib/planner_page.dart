@@ -129,45 +129,10 @@ class WeekStats {
   });
 }
 
-// =============================================================================
-// MOCK DATA SERVICE
-//
-// Every method body should be replaced with a real API call. The public method
-// signatures stay the same so the UI never changes.
-//
-// DATA FLOW — Subjects & Progress:
-//
-//   SUBJECTS LIST
-//   ─────────────
-//   Subjects come from the user's enrolled courses for the current semester
-//   (UserProfile.enrolledCourses  from  GET /profile/{userId}).
-//
-//   SEMESTER TRANSITION
-//   ───────────────────
-//   1. User updates courses in  Profile & Settings.
-//   2. Backend replaces enrolledCourses, archives old study blocks.
-//   3. Frontend re-fetches profile + study plan → new subjects appear.
-//   No front-end code changes needed.
-//
-//   SUBJECT PROGRESS
-//   ────────────────
-//   SubjectInfo.weeklyProgress  is computed server-side as:
-//       completed_study_hours_for_subject_this_week
-//       ───────────────────────────────────────────
-//         total_planned_study_hours_for_subject_this_week
-//
-//   Backend endpoint:  GET /study-planner/{userId}  →  includes per-subject
-//                      progress aggregated from the week's study blocks.
-//
-//   The front-end only ever  displays  the value — it never calculates it.
-// =============================================================================
+
 
 class _PlannerRepository {
 
-  // ---------------------------------------------------------------------------
-  // SUBJECTS — fetched from the user's enrolled courses.
-  // TODO: Replace with:  GET /profile/{userId}  →  List<SubjectInfo>
-  // ---------------------------------------------------------------------------
   static final List<SubjectInfo> _subjects = [
     SubjectInfo(id: 's1', name: 'Database Systems', code: 'CSE301', color: const Color(0xFF4F46E5), weeklyProgress: 0.72, completedHours: 6, totalHours: 8),
     SubjectInfo(id: 's2', name: 'Data Mining', code: 'CSE402', color: const Color(0xFF06B6D4), weeklyProgress: 0.55, completedHours: 4, totalHours: 7),
