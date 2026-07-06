@@ -453,36 +453,38 @@ class _PlannerPageState extends State<PlannerPage> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        body: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 110),
-          children: [
-            _buildWeekHeader(),
-            const SizedBox(height: 14),
-            _buildDayStrip(),
-            const SizedBox(height: 20),
-            _buildStatsRow(),
-            const SizedBox(height: 20),
-            _buildSectionTitle('Today\'s plan'),
-            const SizedBox(height: 10),
-            _buildDaySchedule(),
-            const SizedBox(height: 20),
-            _buildSectionTitle('Subjects'),
-            const SizedBox(height: 10),
-            _buildSubjectsRow(),
-            const SizedBox(height: 20),
-            _buildQuickActions(),
-          ],
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.white, Color(0xFFF6F9FF), Colors.white],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
         ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: _showAddTaskSheet,
-          backgroundColor: AppColors.purple,
-          foregroundColor: Colors.white,
-          elevation: 4,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          child: const Icon(Icons.add_rounded, size: 28),
+        child: SafeArea(
+          bottom: false,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 110),
+            children: [
+              _buildWeekHeader(),
+              const SizedBox(height: 14),
+              _buildDayStrip(),
+              const SizedBox(height: 20),
+              _buildStatsRow(),
+              const SizedBox(height: 20),
+              _buildSectionTitle('Today\'s plan'),
+              const SizedBox(height: 10),
+              _buildDaySchedule(),
+              const SizedBox(height: 20),
+              _buildSectionTitle('Subjects'),
+              const SizedBox(height: 10),
+              _buildSubjectsRow(),
+              const SizedBox(height: 20),
+              _buildQuickActions(),
+            ],
+          ),
         ),
       ),
     );
