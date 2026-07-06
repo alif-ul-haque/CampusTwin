@@ -61,7 +61,7 @@ class WelcomePage extends StatelessWidget {
                       child: IntrinsicHeight(
                         child: Column(
                           children: [
-                            const SizedBox(height: 22),
+                            const SizedBox(height: 50),
                             Center(
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(25), 
@@ -72,19 +72,19 @@ class WelcomePage extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 18),
+                            const SizedBox(height: 50),
                             const Text(
                               'Meet your\ndigital twin.',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 color: Colors.white,
-                                fontSize: 34,
+                                fontSize: 40,
                                 fontWeight: FontWeight.w800,
                                 height: 1.2,
                                 letterSpacing: -0.6,
                               ),
                             ),
-                            const SizedBox(height: 14),
+                            const SizedBox(height: 20),
                             const Text(
                               'CampusTwin unifies your studies, habits, stress and '
                               'expenses into one AI-powered system — so it can guide '
@@ -92,7 +92,7 @@ class WelcomePage extends StatelessWidget {
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 color: Colors.white70,
-                                fontSize: 15,
+                                fontSize: 16,
                                 height: 1.45,
                               ),
                             ),
