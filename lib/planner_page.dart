@@ -139,10 +139,15 @@ class WeekStats {
 //
 //   SUBJECTS LIST
 //   ─────────────
-//   Subjects come from the user's enrolled courses for the current semester.
-//   Backend endpoint:  GET /profile/{userId}  →  returns user's subject list.
-//   When a user updates their semester/courses in Profile & Settings, this
-//   list changes automatically — no front-end code change needed.
+//   Subjects come from the user's enrolled courses for the current semester
+//   (UserProfile.enrolledCourses  from  GET /profile/{userId}).
+//
+//   SEMESTER TRANSITION
+//   ───────────────────
+//   1. User updates courses in  Profile & Settings.
+//   2. Backend replaces enrolledCourses, archives old study blocks.
+//   3. Frontend re-fetches profile + study plan → new subjects appear.
+//   No front-end code changes needed.
 //
 //   SUBJECT PROGRESS
 //   ────────────────
