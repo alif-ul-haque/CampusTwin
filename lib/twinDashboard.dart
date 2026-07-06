@@ -165,8 +165,6 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
 
   @override
   Widget build(BuildContext context) {
-    final showTwinnyButton = _selectedTabIndex != 4;
-
     return Scaffold(
       extendBody: true,
       body: Container(
@@ -179,22 +177,6 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
         ),
         child: _buildCurrentTabBody(),
       ),
-      floatingActionButton: showTwinnyButton
-          ? FloatingActionButton.extended(
-              onPressed: () {
-                // TODO: Navigate to AI Assistant chat screen
-                // Navigator.push(context, MaterialPageRoute(builder: (_) => const AiAssistantPage()));
-              },
-              backgroundColor: AppColors.purple,
-              foregroundColor: Colors.white,
-              elevation: 4,
-              icon: const Icon(Icons.smart_toy_outlined),
-              label: const Text(
-                'Ask Twinny',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-            )
-          : null,
       bottomNavigationBar: Material(
         type: MaterialType.transparency,
         child: SafeArea(
