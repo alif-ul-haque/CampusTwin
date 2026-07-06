@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:campus_twin/theme.dart';
+import 'package:campus_twin/planner_page.dart';
 
 /// ============================================================
 /// TWIN DASHBOARD — CampusTwin
@@ -164,8 +165,6 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
 
   @override
   Widget build(BuildContext context) {
-    final showTwinnyButton = _selectedTabIndex != 4;
-
     return Scaffold(
       extendBody: true,
       body: Container(
@@ -178,22 +177,6 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
         ),
         child: _buildCurrentTabBody(),
       ),
-      floatingActionButton: showTwinnyButton
-          ? FloatingActionButton.extended(
-              onPressed: () {
-                // TODO: Navigate to AI Assistant chat screen
-                // Navigator.push(context, MaterialPageRoute(builder: (_) => const AiAssistantPage()));
-              },
-              backgroundColor: AppColors.purple,
-              foregroundColor: Colors.white,
-              elevation: 4,
-              icon: const Icon(Icons.smart_toy_outlined),
-              label: const Text(
-                'Ask Twinny',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-            )
-          : null,
       bottomNavigationBar: Material(
         type: MaterialType.transparency,
         child: SafeArea(
@@ -286,16 +269,7 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
           ),
         );
       case 1:
-        return _buildFeatureScreen(
-          title: 'Study Planner',
-          subtitle: 'Organize classes, revision slots, and assignment plans.',
-          icon: Icons.edit_calendar_rounded,
-          highlights: const [
-            'Create weekly study blocks',
-            'Track subject-wise progress',
-            'Sync planner with class routine',
-          ],
-        );
+        return const PlannerPage();
       case 2:
         return _buildFeatureScreen(
           title: 'Habit Tracker',
@@ -406,6 +380,7 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
       ),
     );
   }
+
 
   Widget _buildFeaturePoint(String text) {
     return Padding(
