@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:campus_twin/theme.dart';
 import 'package:campus_twin/app_widget.dart';
-import 'package:campus_twin/twinDashboard.dart';
+import 'package:campus_twin/twindashboard.dart';
 
 // =============================================================================
 // DATA MODELS
@@ -186,7 +186,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
   late final AnimationController _navBorderController;
   late final AnimationController _checkInPulseController;
   HabitType _selectedChart = HabitType.sleep;
-  int _navIndex = 2; // Habits tab selected
+  final int _navIndex = 2; // Habits tab selected
 
   static const _weekdayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
