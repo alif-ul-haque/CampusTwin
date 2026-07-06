@@ -1268,17 +1268,18 @@ class _StatTile extends StatelessWidget {
 }
 
 class _GlowCard extends StatelessWidget {
+  const _GlowCard({required this.child, this.radius = 16, this.strokeWidth = 1.6});
+
   final Widget child;
   final double radius;
   final double strokeWidth;
-  const _GlowCard({required this.child, this.radius = 16, this.strokeWidth = 1.6});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(radius),
-        boxShadow: [BoxShadow(color: Color(0xFF2563EB).withValues(alpha: 0.18), blurRadius: 16, offset: const Offset(0, 6))],
+        boxShadow: [BoxShadow(color: const Color(0xFF2563EB).withValues(alpha: 0.18), blurRadius: 16, offset: const Offset(0, 6))],
       ),
       child: _StaticBorderBox(borderRadius: radius, strokeWidth: strokeWidth, child: child),
     );
@@ -1286,10 +1287,11 @@ class _GlowCard extends StatelessWidget {
 }
 
 class _StaticBorderBox extends StatelessWidget {
+  const _StaticBorderBox({required this.child, this.borderRadius = 16, this.strokeWidth = 1.6});
+
   final Widget child;
   final double borderRadius;
   final double strokeWidth;
-  const _StaticBorderBox({required this.child, this.borderRadius = 16, this.strokeWidth = 1.6});
 
   @override
   Widget build(BuildContext context) {
@@ -1307,9 +1309,10 @@ class _StaticBorderBox extends StatelessWidget {
 }
 
 class _BorderPainter extends CustomPainter {
+  _BorderPainter({required this.radius, required this.strokeWidth});
+
   final double radius;
   final double strokeWidth;
-  _BorderPainter({required this.radius, required this.strokeWidth});
 
   @override
   void paint(Canvas canvas, Size size) {
