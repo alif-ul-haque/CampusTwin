@@ -61,9 +61,18 @@ class WelcomePage extends StatelessWidget {
                       child: IntrinsicHeight(
                         child: Column(
                           children: [
-                            const SizedBox(height: 24),
-                            const AuthBrandMark(size: 96),
-                            const SizedBox(height: 32),
+                            const SizedBox(height: 22),
+                            Center(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(25), 
+                                child: Image.asset(
+                                  'assets/Campus_Twin.png', 
+                                  height: 100, 
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 18),
                             const Text(
                               'Meet your\ndigital twin.',
                               textAlign: TextAlign.center,

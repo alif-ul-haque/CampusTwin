@@ -3,6 +3,7 @@ import 'package:campus_twin/theme.dart';
 import 'package:campus_twin/register.dart';
 import 'package:campus_twin/app_widget.dart';
 import 'package:campus_twin/twinDashboard.dart';
+import 'package:campus_twin/welcome_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -16,6 +17,9 @@ class _LoginPageState extends State<LoginPage> {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
+
+  static const double _heroHeight = 372;
+  static const double _cardOverlap = 30;
 
   @override
   void dispose() {
@@ -61,6 +65,13 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  void _goToWelcome() {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const WelcomePage()),
+      (route) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -78,75 +89,89 @@ class _LoginPageState extends State<LoginPage> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 SizedBox(
-                  height: 330,
+                  height: _heroHeight,
                   child: Stack(
                     children: [
                       const Positioned.fill(
-                        child: AuthAnimatedBackdrop(heroHeight: 330),
+                        child: AuthAnimatedBackdrop(heroHeight: _heroHeight),
                       ),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const SizedBox(height: 10),
+                            const SizedBox(height: 8),
                             Align(
                               alignment: Alignment.centerLeft,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.16),
-                                  borderRadius: BorderRadius.circular(999),
-                                  border: Border.all(
-                                    color: Colors.white.withValues(alpha: 0.22),
+                              child: GestureDetector(
+                                onTap: _goToWelcome,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
                                   ),
-                                ),
-                                child: const Text(
-                                  'CampusTwin',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 0.3,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.16),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(alpha: 0.22),
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'CampusTwin',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.3,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 28),
-                            const Center(child: AuthBrandMark(size: 86)),
+        
                             const SizedBox(height: 22),
+                            Center(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(25), 
+                                child: Image.asset(
+                                  'assets/Campus_Twin.png', 
+                                  height: 80, 
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 18),
                             const Center(
                               child: Text(
                                 'Welcome back',
                                 style: TextStyle(
                                   color: Colors.white,
-                                  fontSize: 30,
+                                  fontSize: 27,
                                   fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.6,
+                                  letterSpacing: -0.5,
+                                  height: 1.1,
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 6),
                             const Center(
                               child: Text(
                                 'Sign in to continue your CampusTwin experience.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: Colors.white,
-                                  fontSize: 14.5,
-                                  height: 1.35,
+                                  fontSize: 13.5,
+                                  height: 1.3,
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 18),
+                            const SizedBox(height: 14),
                             const Center(
                               child: Wrap(
                                 alignment: WrapAlignment.center,
                                 spacing: 10,
-                                runSpacing: 10,
+                                runSpacing: 8,
                                 children: [
                                   AuthFeatureBadge(
                                     icon: Icons.security_outlined,
@@ -166,7 +191,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 ),
                 Transform.translate(
-                  offset: const Offset(0, -38),
+                  offset: const Offset(0, -_cardOverlap),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: _buildLoginCard(),
