@@ -16,6 +16,9 @@ class _RegisterPageState extends State<RegisterPage> {
   bool _obscurePassword = true;
   bool _isLoading = false;
 
+  static const double _heroHeight = 372;
+  static const double _cardOverlap = 30;
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -75,51 +78,61 @@ class _RegisterPageState extends State<RegisterPage> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 SizedBox(
-                  height: 330,
+                  height: _heroHeight,
                   child: Stack(
                     children: [
                       const Positioned.fill(
-                        child: AuthAnimatedBackdrop(heroHeight: 330),
+                        child: AuthAnimatedBackdrop(heroHeight: _heroHeight),
                       ),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const SizedBox(height: 10),
+                            const SizedBox(height: 8),
                             _buildBackButton(),
                             const SizedBox(height: 22),
-                            const Center(child: AuthBrandMark(size: 80)),
-                            const SizedBox(height: 20),
+                            Center(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(25), 
+                                child: Image.asset(
+                                  'assets/Campus_Twin.png', 
+                                  height: 80, 
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 18),
                             const Center(
                               child: Text(
                                 'Create account',
                                 style: TextStyle(
                                   color: Colors.white,
-                                  fontSize: 30,
+                                  fontSize: 27,
                                   fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.6,
+                                  letterSpacing: -0.5,
+                                  height: 1.1,
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 6),
                             const Center(
                               child: Text(
                                 'Set up your student profile and start your CampusTwin journey.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: Colors.white,
-                                  fontSize: 14.5,
-                                  height: 1.35,
+                                  fontSize: 13.5,
+                                  height: 1.3,
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 18),
+                            const SizedBox(height: 14),
                             const Center(
                               child: Wrap(
                                 alignment: WrapAlignment.center,
                                 spacing: 10,
-                                runSpacing: 10,
+                                runSpacing: 8,
                                 children: [
                                   AuthFeatureBadge(
                                     icon: Icons.verified_outlined,
@@ -139,7 +152,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   ),
                 ),
                 Transform.translate(
-                  offset: const Offset(0, -38),
+                  offset: const Offset(0, -_cardOverlap),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: _buildRegisterCard(),
