@@ -6,13 +6,17 @@ import 'package:campus_twin/theme.dart';
 // =============================================================================
 
 class AssistantMessage {
+  const AssistantMessage({
+    required this.id,
+    required this.text,
+    required this.isUser,
+    required this.timestamp,
+  });
+
   final String id;
   final String text;
   final bool isUser;
   final DateTime timestamp;
-  const AssistantMessage({
-    required this.id, required this.text, required this.isUser, required this.timestamp,
-  });
 }
 
 // =============================================================================
@@ -34,7 +38,7 @@ class _AssistantRepository {
     chatMessages = [
       AssistantMessage(
         id: 'a1',
-        text: 'Hi Alif! I\'m your Twinny assistant. How can I help you today?',
+        text: "Hi Alif! I'm your Twinny assistant. How can I help you today?",
         isUser: false,
         timestamp: DateTime.now(),
       ),
@@ -44,14 +48,17 @@ class _AssistantRepository {
   static void sendMessage(String text) {
     initChat();
     chatMessages.add(AssistantMessage(
-      id: 'a${chatMessages.length + 1}', text: text, isUser: true, timestamp: DateTime.now(),
+      id: 'a${chatMessages.length + 1}',
+      text: text,
+      isUser: true,
+      timestamp: DateTime.now(),
     ));
     final replies = [
-      'Great question! Based on your upcoming deadlines, I\'d suggest focusing on your ML Assignment first — it\'s due tomorrow.',
-      'I noticed your stress level is medium. A 15-minute break can help. Why not take a short walk?',
-      'You\'re making good progress this week. Keep up the consistency!',
+      "Great question! Based on your upcoming deadlines, I'd suggest focusing on your ML Assignment first — it's due tomorrow.",
+      "I noticed your stress level is medium. A 15-minute break can help. Why not take a short walk?",
+      "You're making good progress this week. Keep up the consistency!",
       'Good progress on Database Systems! You\'re at 72% of your weekly study target.',
-      'Don\'t forget to review your study plan for tomorrow. I can help you reschedule if needed.',
+      "Don't forget to review your study plan for tomorrow. I can help you reschedule if needed.",
     ];
     Future.delayed(const Duration(milliseconds: 600), () {
       chatMessages.add(AssistantMessage(
@@ -129,10 +136,14 @@ class _AssistantTabState extends State<AssistantTab> {
                 child: Row(
                   children: [
                     Container(
-                      width: 46, height: 46,
+                      width: 46,
+                      height: 46,
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [AppColors.purple, AppColors.purpleLight],
-                          begin: Alignment.topLeft, end: Alignment.bottomRight),
+                        gradient: const LinearGradient(
+                          colors: [AppColors.purple, AppColors.purpleLight],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: const Icon(Icons.smart_toy_rounded, color: Colors.white, size: 24),
@@ -142,9 +153,15 @@ class _AssistantTabState extends State<AssistantTab> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Twinny Assistant', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                          Text(
+                            'Twinny Assistant',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                          ),
                           SizedBox(height: 2),
-                          Text('Ask me anything about your studies', style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5)),
+                          Text(
+                            'Ask me anything about your studies',
+                            style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5),
+                          ),
                         ],
                       ),
                     ),
@@ -170,10 +187,14 @@ class _AssistantTabState extends State<AssistantTab> {
                           children: [
                             if (!m.isUser) ...[
                               Container(
-                                width: 32, height: 32,
+                                width: 32,
+                                height: 32,
                                 decoration: BoxDecoration(
-                                  gradient: const LinearGradient(colors: [AppColors.purple, AppColors.purpleLight],
-                                    begin: Alignment.topLeft, end: Alignment.bottomRight),
+                                  gradient: const LinearGradient(
+                                    colors: [AppColors.purple, AppColors.purpleLight],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: const Icon(Icons.smart_toy_rounded, color: Colors.white, size: 16),
@@ -191,18 +212,30 @@ class _AssistantTabState extends State<AssistantTab> {
                                   ),
                                   border: m.isUser ? null : Border.all(color: AppColors.border.withValues(alpha: 0.5)),
                                   boxShadow: m.isUser
-                                      ? [BoxShadow(color: AppColors.purple.withValues(alpha: 0.15), blurRadius: 8, offset: const Offset(0, 2))]
+                                      ? [
+                                          BoxShadow(
+                                            color: AppColors.purple.withValues(alpha: 0.15),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ]
                                       : null,
                                 ),
-                                child: Text(m.text, style: TextStyle(
-                                  color: m.isUser ? Colors.white : AppColors.textPrimary,
-                                  fontSize: 13.5, height: 1.35)),
+                                child: Text(
+                                  m.text,
+                                  style: TextStyle(
+                                    color: m.isUser ? Colors.white : AppColors.textPrimary,
+                                    fontSize: 13.5,
+                                    height: 1.35,
+                                  ),
+                                ),
                               ),
                             ),
                             if (m.isUser) ...[
                               const SizedBox(width: 8),
                               Container(
-                                width: 32, height: 32,
+                                width: 32,
+                                height: 32,
                                 decoration: BoxDecoration(
                                   color: AppColors.purple.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(10),
@@ -242,10 +275,14 @@ class _AssistantTabState extends State<AssistantTab> {
                 GestureDetector(
                   onTap: () => _sendChat(_chatController.text),
                   child: Container(
-                    width: 50, height: 50,
+                    width: 50,
+                    height: 50,
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(colors: [AppColors.purple, AppColors.purpleLight],
-                        begin: Alignment.topLeft, end: Alignment.bottomRight),
+                      gradient: const LinearGradient(
+                        colors: [AppColors.purple, AppColors.purpleLight],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: const Icon(Icons.send_rounded, color: Colors.white, size: 22),
@@ -268,8 +305,10 @@ class _AssistantTabState extends State<AssistantTab> {
           const SizedBox(height: 12),
           const Text('Ask Twinny anything!', style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
           const SizedBox(height: 4),
-          Text('Study tips, deadline help, stress advice…',
-            style: TextStyle(color: AppColors.textSecondary.withValues(alpha: 0.6), fontSize: 12.5)),
+          Text(
+            'Study tips, deadline help, stress advice…',
+            style: TextStyle(color: AppColors.textSecondary.withValues(alpha: 0.6), fontSize: 12.5),
+          ),
         ],
       ),
     );
@@ -281,10 +320,10 @@ class _AssistantTabState extends State<AssistantTab> {
 // =============================================================================
 
 class _GlowCard extends StatelessWidget {
+  const _GlowCard({required this.child, this.radius = 16});
+
   final Widget child;
   final double radius;
-  final double strokeWidth;
-  const _GlowCard({required this.child, this.radius = 16, this.strokeWidth = 1.6});
 
   @override
   Widget build(BuildContext context) {
@@ -293,25 +332,27 @@ class _GlowCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(radius),
         boxShadow: [BoxShadow(color: const Color(0xFF2563EB).withValues(alpha: 0.18), blurRadius: 16, offset: const Offset(0, 6))],
       ),
-      child: _StaticBorderBox(borderRadius: radius, strokeWidth: strokeWidth, child: child),
+      child: _StaticBorderBox(borderRadius: radius, child: child),
     );
   }
 }
 
 class _StaticBorderBox extends StatelessWidget {
+  const _StaticBorderBox({required this.child, this.borderRadius = 16});
+
+  static const double _strokeWidth = 1.6;
+
   final Widget child;
   final double borderRadius;
-  final double strokeWidth;
-  const _StaticBorderBox({required this.child, this.borderRadius = 16, this.strokeWidth = 1.6});
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: _BorderPainter(radius: borderRadius, strokeWidth: strokeWidth),
+      painter: _BorderPainter(radius: borderRadius),
       child: Padding(
-        padding: EdgeInsets.all(strokeWidth),
+        padding: const EdgeInsets.all(_strokeWidth),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular((borderRadius - strokeWidth).clamp(0, borderRadius)),
+          borderRadius: BorderRadius.circular((borderRadius - _strokeWidth).clamp(0, borderRadius)),
           child: ColoredBox(color: AppColors.card, child: child),
         ),
       ),
@@ -320,9 +361,11 @@ class _StaticBorderBox extends StatelessWidget {
 }
 
 class _BorderPainter extends CustomPainter {
+  _BorderPainter({required this.radius});
+
+  static const double strokeWidth = 1.6;
+
   final double radius;
-  final double strokeWidth;
-  _BorderPainter({required this.radius, required this.strokeWidth});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -340,5 +383,5 @@ class _BorderPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _BorderPainter old) => old.radius != radius || old.strokeWidth != strokeWidth;
+  bool shouldRepaint(covariant _BorderPainter old) => old.radius != radius;
 }
