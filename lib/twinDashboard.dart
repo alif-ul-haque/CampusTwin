@@ -291,7 +291,7 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBody: true,
+      extendBody: false,
       body: Container(
         decoration: const BoxDecoration(gradient: LinearGradient(
           colors: [Colors.white, Color(0xFFF6F9FF), Colors.white],
@@ -301,43 +301,57 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
             ? const Center(child: CircularProgressIndicator(color: AppColors.purple))
             : _buildCurrentTab(),
       ),
-      bottomNavigationBar: Material(
-        type: MaterialType.transparency,
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          border: Border(
+            top: BorderSide(color: AppColors.border, width: 1),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x0F0F172A),
+              blurRadius: 16,
+              offset: Offset(0, -4),
+            ),
+          ],
+        ),
         child: SafeArea(
-          minimum: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-          child: _AnimatedBorderBox(
-            animation: _borderAnimController,
-            borderRadius: 32, strokeWidth: 2, fillColor: AppColors.card,
-            colors: const [Color(0xFF4F46E5), Color(0xFF06B6D4), Color(0xFF7C3AED), Color(0xFF4F46E5)],
-            child: SizedBox(
+          child: NavigationBarTheme(
+            data: NavigationBarThemeData(
+              labelTextStyle: WidgetStateProperty.resolveWith((states) {
+                final sel = states.contains(WidgetState.selected);
+                return TextStyle(
+                  fontSize: 11,
+                  fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
+                  color: sel ? AppColors.purple : AppColors.textSecondary,
+                );
+              }),
+            ),
+            child: NavigationBar(
               height: 68,
-              child: NavigationBarTheme(
-                data: NavigationBarThemeData(
-                  labelTextStyle: WidgetStateProperty.resolveWith((states) {
-                    final sel = states.contains(WidgetState.selected);
-                    return TextStyle(fontSize: 11,
-                      fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-                      color: sel ? AppColors.purple : AppColors.textSecondary);
-                  }),
-                ),
-                child: NavigationBar(
-                  height: 68, backgroundColor: Colors.transparent, surfaceTintColor: Colors.transparent,
-                  elevation: 0, indicatorColor: AppColors.purple.withValues(alpha: 0.12),
-                  indicatorShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                  selectedIndex: _selectedTabIndex,
-                  labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-                  onDestinationSelected: (i) {
-                    if (i == 2) {
-                      _openHabitTracker();
-                      return;
-                    }
-                    setState(() => _selectedTabIndex = i);
-                  },
-                  destinations: _tabs.map((t) => NavigationDestination(
-                    icon: Icon(t.icon), selectedIcon: Icon(t.activeIcon, color: AppColors.purple), label: t.label,
-                  )).toList(),
-                ),
+              backgroundColor: Colors.transparent,
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
+              indicatorColor: AppColors.purple.withValues(alpha: 0.12),
+              indicatorShape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
               ),
+              selectedIndex: _selectedTabIndex,
+              labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+              onDestinationSelected: (i) {
+                if (i == 2) {
+                  _openHabitTracker();
+                  return;
+                }
+                setState(() => _selectedTabIndex = i);
+              },
+              destinations: _tabs
+                  .map((t) => NavigationDestination(
+                        icon: Icon(t.icon),
+                        selectedIcon: Icon(t.activeIcon, color: AppColors.purple),
+                        label: t.label,
+                      ))
+                  .toList(),
             ),
           ),
         ),

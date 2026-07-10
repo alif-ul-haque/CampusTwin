@@ -183,7 +183,7 @@ class HabitTrackerPage extends StatefulWidget {
 }
 
 class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProviderStateMixin {
-  late final AnimationController _navBorderController;
+  
   late final AnimationController _checkInPulseController;
   HabitType _selectedChart = HabitType.sleep;
   final int _navIndex = 2; // Habits tab selected
@@ -193,13 +193,13 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
   @override
   void initState() {
     super.initState();
-    _navBorderController = AnimationController(vsync: this, duration: const Duration(seconds: 4))..repeat();
+    
     _checkInPulseController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: true);
   }
 
   @override
   void dispose() {
-    _navBorderController.dispose();
+    
     _checkInPulseController.dispose();
     super.dispose();
   }
@@ -321,7 +321,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBody: true,
+      extendBody: false,
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: _HabitRepository.checkedInToday ? null : _buildCheckInButton(),
       body: Container(
@@ -529,16 +529,28 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
     List<double> values;
     Color color;
     String unit;
+    bool lowerIsBetter;
+    double standard;
+
     if (_selectedChart == HabitType.score) {
       values = _HabitRepository.scoreWeek;
       color = AppColors.purple;
       unit = '%';
+      lowerIsBetter = false;
+      standard = 70; // ≥70% habit score is considered on-track
     } else {
       final m = _metric(_selectedChart);
       values = m.weekValues;
       color = m.color;
       unit = m.unit;
+      lowerIsBetter = m.lowerIsBetter;
+      standard = m.target;
     }
+
+    // Whether a given day's value meets the standard.
+    bool meetsStandard(double v) =>
+        lowerIsBetter ? v <= standard : v >= standard * 0.8;
+
     final maxVal = values.reduce((a, b) => a > b ? a : b);
 
     return _GlowCard(
@@ -576,21 +588,38 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
             ),
             const SizedBox(height: 20),
             SizedBox(
-              height: 130,
+              height: 160,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: List.generate(values.length, (i) {
                   final ratio = maxVal == 0 ? 0.0 : values[i] / maxVal;
                   final isLast = i == values.length - 1;
+                  final met = meetsStandard(values[i]);
                   return Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          Text(values[i] % 1 == 0 ? values[i].toInt().toString() : values[i].toStringAsFixed(1),
-                              style: TextStyle(fontSize: 9.5, color: AppColors.textSecondary.withValues(alpha: 0.7), fontWeight: FontWeight.w600)),
+                          // ── Emoji indicator ──────────────────────────
+                          Text(
+                            met ? '😊' : '😞',
+                            style: const TextStyle(fontSize: 15),
+                          ),
                           const SizedBox(height: 4),
+                          // ── Value label ──────────────────────────────
+                          Text(
+                            values[i] % 1 == 0
+                                ? values[i].toInt().toString()
+                                : values[i].toStringAsFixed(1),
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              color: AppColors.textSecondary.withValues(alpha: 0.7),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          // ── Animated bar ──────────────────────────────
                           AnimatedContainer(
                             duration: const Duration(milliseconds: 500),
                             curve: Curves.easeOutCubic,
@@ -608,7 +637,11 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                             ),
                           ),
                           const SizedBox(height: 6),
-                          Text(_weekdayLabels[i], style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+                          // ── Day label ────────────────────────────────
+                          Text(
+                            _weekdayLabels[i],
+                            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                          ),
                         ],
                       ),
                     ),
@@ -616,13 +649,23 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                 }),
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 10),
+            // ── Legend row ─────────────────────────────────────────
             Row(
               children: [
                 Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
                 const SizedBox(width: 6),
-                Text('This week · avg ${(values.reduce((a, b) => a + b) / values.length).toStringAsFixed(1)} $unit',
-                    style: const TextStyle(fontSize: 11.5, color: AppColors.textSecondary)),
+                Text(
+                  'This week · avg ${(values.reduce((a, b) => a + b) / values.length).toStringAsFixed(1)} $unit',
+                  style: const TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+                ),
+                const Spacer(),
+                const Text('😊', style: TextStyle(fontSize: 12)),
+                const SizedBox(width: 3),
+                const Text('met  ', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                const Text('😞', style: TextStyle(fontSize: 12)),
+                const SizedBox(width: 3),
+                const Text('below', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
               ],
             ),
           ],
@@ -742,48 +785,49 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
       (Icons.account_balance_wallet_outlined, Icons.account_balance_wallet_rounded, 'Budget'),
       (Icons.smart_toy_outlined, Icons.smart_toy_rounded, 'Assistant'),
     ];
-    return Material(
-      type: MaterialType.transparency,
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.card,
+        border: Border(
+          top: BorderSide(color: AppColors.border, width: 1),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x0F0F172A),
+            blurRadius: 16,
+            offset: Offset(0, -4),
+          ),
+        ],
+      ),
       child: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-        child: _AnimatedBorderBox(
-          animation: _navBorderController,
-          borderRadius: 32,
-          strokeWidth: 2,
-          fillColor: AppColors.card,
-          colors: const [Color(0xFF4F46E5), Color(0xFF06B6D4), Color(0xFF7C3AED), Color(0xFF4F46E5)],
-          child: SizedBox(
+        child: NavigationBarTheme(
+          data: NavigationBarThemeData(
+            labelTextStyle: WidgetStateProperty.resolveWith((states) {
+              final sel = states.contains(WidgetState.selected);
+              return TextStyle(fontSize: 11, fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: sel ? AppColors.purple : AppColors.textSecondary);
+            }),
+          ),
+          child: NavigationBar(
             height: 68,
-            child: NavigationBarTheme(
-              data: NavigationBarThemeData(
-                labelTextStyle: WidgetStateProperty.resolveWith((states) {
-                  final sel = states.contains(WidgetState.selected);
-                  return TextStyle(fontSize: 11, fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: sel ? AppColors.purple : AppColors.textSecondary);
-                }),
-              ),
-              child: NavigationBar(
-                height: 68,
-                backgroundColor: Colors.transparent,
-                surfaceTintColor: Colors.transparent,
-                elevation: 0,
-                indicatorColor: AppColors.purple.withValues(alpha: 0.12),
-                indicatorShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                selectedIndex: _navIndex,
-                labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-                  onDestinationSelected: (i) {
-                    if (i == 0) {
-                      Navigator.of(context).maybePop();
-                      return;
-                    }
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(builder: (_) => DashboardPage(initialTabIndex: i)),
-                    );
-                  },
-                destinations: tabs
-                    .map((t) => NavigationDestination(icon: Icon(t.$1), selectedIcon: Icon(t.$2, color: AppColors.purple), label: t.$3))
-                    .toList(),
-              ),
-            ),
+            backgroundColor: Colors.transparent,
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            indicatorColor: AppColors.purple.withValues(alpha: 0.12),
+            indicatorShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            selectedIndex: _navIndex,
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+            onDestinationSelected: (i) {
+              if (i == 0) {
+                Navigator.of(context).maybePop();
+                return;
+              }
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (_) => DashboardPage(initialTabIndex: i)),
+              );
+            },
+            destinations: tabs
+                .map((t) => NavigationDestination(icon: Icon(t.$1), selectedIcon: Icon(t.$2, color: AppColors.purple), label: t.$3))
+                .toList(),
           ),
         ),
       ),
