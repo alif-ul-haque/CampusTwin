@@ -53,8 +53,8 @@ class _RegisterPageState extends State<RegisterPage> {
     if (!mounted) return;
     setState(() => _isLoading = false);
 
-    // Navigate to home / onboarding on success.
-    // Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomePage()));
+    if (!mounted) return;
+    Navigator.pop(context);
   }
 
   void _goToLogin() {
