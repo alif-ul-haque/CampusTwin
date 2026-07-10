@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:campus_twin/theme.dart';
 import 'package:campus_twin/app_widget.dart';
-import 'package:campus_twin/twindashboard.dart';
+import 'package:campus_twin/twinDashboard.dart';
 
 // =============================================================================
 // DATA MODELS
