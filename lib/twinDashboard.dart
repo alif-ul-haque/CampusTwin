@@ -4,6 +4,7 @@ import 'package:campus_twin/planner_page.dart';
 import 'package:campus_twin/habitTracker.dart';
 import 'package:campus_twin/welcome_page.dart';
 import 'package:campus_twin/assistant.dart';
+import 'package:campus_twin/budget_page.dart';
 
 // =============================================================================
 // DATA MODELS
@@ -364,7 +365,7 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
       case 0: return _buildHomeTab();
       case 1: return const PlannerPage();
       case 2: return _buildHabitsTab();
-      case 3: return _buildBudgetTab();
+      case 3: return const BudgetPage();
       case 4: return const AssistantTab();
       default: return const SizedBox.shrink();
     }
@@ -849,23 +850,6 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
         'Add daily habits and reminders',
         'Track streaks and consistency',
         'See missed habits quickly',
-      ],
-    );
-  }
-
-  // =========================================================================
-  // BUDGET TAB
-  // =========================================================================
-
-  Widget _buildBudgetTab() {
-    return _buildPlaceholderTab(
-      title: 'Expense Manager',
-      subtitle: 'Manage your campus expenses and monthly budget goals.',
-      icon: Icons.account_balance_wallet_rounded,
-      highlights: const [
-        'Log spending by category',
-        'Set monthly budget caps',
-        'Monitor remaining balance',
       ],
     );
   }
