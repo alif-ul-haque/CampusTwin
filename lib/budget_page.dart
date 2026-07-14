@@ -231,7 +231,6 @@ class _BudgetPageState extends State<BudgetPage> {
 
   late DateTime _visibleMonth;
   late DateTime _selectedDay;
-  bool _monthExpanded = false;
   StatsRange _range = StatsRange.monthly;
   TxnType _breakdownType = TxnType.expense;
 
@@ -244,37 +243,35 @@ class _BudgetPageState extends State<BudgetPage> {
     _selectedDay = DateTime(now.year, now.month, now.day);
   }
 
-  /// Monday of the week holding the selected day — the collapsed calendar's row.
-  DateTime get _weekStart => DateTime(
-    _selectedDay.year, _selectedDay.month, _selectedDay.day - (_selectedDay.weekday - 1));
-
   // ── Actions ──────────────────────────────────────────────────────────
 
   void _selectDay(DateTime day) {
     setState(() {
       _selectedDay = day;
+      // The summary card and the monthly/yearly stats follow the day you pick.
       _visibleMonth = DateTime(day.year, day.month);
     });
   }
 
-  /// Collapsed → step one week. Expanded → step one month.
-  void _shiftCalendar(int delta) {
-    setState(() {
-      if (_monthExpanded) {
-        _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month + delta);
-        final lastDay = DateTime(_visibleMonth.year, _visibleMonth.month + 1, 0).day;
-        _selectedDay = DateTime(
-          _visibleMonth.year, _visibleMonth.month, _selectedDay.day.clamp(1, lastDay));
-      } else {
-        _selectedDay = _selectedDay.add(Duration(days: 7 * delta));
-        _visibleMonth = DateTime(_selectedDay.year, _selectedDay.month);
-      }
-    });
-  }
+  /// One-tap day stepping, so the common "yesterday" case needs no popup.
+  void _shiftDay(int delta) =>
+      _selectDay(DateTime(_selectedDay.year, _selectedDay.month, _selectedDay.day + delta));
 
   void _jumpToToday() {
     final now = DateTime.now();
     _selectDay(DateTime(now.year, now.month, now.day));
+  }
+
+  /// The month calendar now lives in a popup, launched from the summary card
+  /// or by tapping the date in the Transactions header.
+  Future<void> _openCalendarSheet() async {
+    final picked = await showModalBottomSheet<DateTime>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _CalendarSheet(selectedDay: _selectedDay),
+    );
+    if (picked != null && mounted) _selectDay(picked);
   }
 
   Future<void> _openTypePicker() async {
@@ -338,10 +335,8 @@ class _BudgetPageState extends State<BudgetPage> {
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
           children: [
             _buildSummaryCard(),
-            const SizedBox(height: 16),
-            _buildCalendarCard(),
             const SizedBox(height: 18),
-            _sectionTitle('Transactions', trailing: _dayHeadline()),
+            _buildTransactionsHeader(),
             const SizedBox(height: 10),
             _buildDayTransactions(),
             const SizedBox(height: 22),
@@ -352,18 +347,6 @@ class _BudgetPageState extends State<BudgetPage> {
         ),
       ),
     );
-  }
-
-  /// "Today · 4 items · spent ৳430" — the day summary next to the section title.
-  String _dayHeadline() {
-    final label = _isSameDay(_selectedDay, DateTime.now())
-        ? 'Today'
-        : '${_selectedDay.day} ${_monthsShort[_selectedDay.month - 1]}';
-    final txns = BudgetRepository.onDay(_selectedDay);
-    if (txns.isEmpty) return label;
-    final spent = BudgetRepository.totalOf(txns, TxnType.expense);
-    return '$label · ${txns.length} item${txns.length == 1 ? '' : 's'}'
-        '${spent > 0 ? ' · ${_money(spent)} spent' : ''}';
   }
 
   Widget _sectionTitle(String title, {String? trailing}) {
@@ -398,150 +381,73 @@ class _BudgetPageState extends State<BudgetPage> {
     final spentRatio = income > 0 ? (expense / income).clamp(0.0, 1.0) : 0.0;
 
     return _GlowCard(
-      radius: 24,
+      radius: 22,
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Balance + calendar button
             Row(
               children: [
-                Container(
-                  width: 44, height: 44,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [const Color(0xFF10B981).withValues(alpha: 0.18), const Color(0xFF06B6D4).withValues(alpha: 0.12)],
-                      begin: Alignment.topLeft, end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF10B981), size: 22),
-                ),
-                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('${_months[_visibleMonth.month - 1]} balance',
-                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                      const SizedBox(height: 2),
+                      Text('${_months[_visibleMonth.month - 1]} ${_visibleMonth.year} · balance',
+                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
+                      const SizedBox(height: 1),
                       Text(_money(balance),
                         style: TextStyle(
-                          fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -0.6,
+                          fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.6,
                           color: balance < 0 ? const Color(0xFFDC2626) : AppColors.textPrimary,
                         )),
                     ],
                   ),
                 ),
+                _CalendarButton(onTap: _openCalendarSheet),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
+            // Income / expense, side by side
             Row(
               children: [
                 Expanded(child: _MiniStat(
                   icon: Icons.arrow_downward_rounded, label: 'Income',
                   value: _money(income), color: const Color(0xFF10B981),
                 )),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Expanded(child: _MiniStat(
                   icon: Icons.arrow_upward_rounded, label: 'Expense',
                   value: _money(expense), color: const Color(0xFFEF4444),
                 )),
               ],
             ),
-            const SizedBox(height: 14),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: LinearProgressIndicator(
-                value: spentRatio.toDouble(),
-                minHeight: 7,
-                backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.15),
-                valueColor: AlwaysStoppedAnimation(
-                  spentRatio > 0.9 ? const Color(0xFFDC2626) : const Color(0xFFF59E0B)),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              income == 0
-                  ? 'No income logged this month yet.'
-                  : '${(spentRatio * 100).toStringAsFixed(0)}% of this month\'s income spent',
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 11.5),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Calendar ─────────────────────────────────────────────────────────
-
-  Widget _buildCalendarCard() {
-    final showingToday = _isSameDay(_selectedDay, DateTime.now());
-
-    return _GlowCard(
-      radius: 20,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
-        child: Column(
-          children: [
-            // Header: arrows, month label (tap to expand/collapse), Today shortcut
+            const SizedBox(height: 10),
+            // Spend meter — the caption sits beside the bar instead of under it.
             Row(
               children: [
-                _CalendarArrow(icon: Icons.chevron_left_rounded, onTap: () => _shiftCalendar(-1)),
                 Expanded(
-                  child: GestureDetector(
-                    onTap: () => setState(() => _monthExpanded = !_monthExpanded),
-                    behavior: HitTestBehavior.opaque,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          '${_months[_visibleMonth.month - 1]} ${_visibleMonth.year}',
-                          style: const TextStyle(
-                            fontSize: 14.5, fontWeight: FontWeight.w800,
-                            color: AppColors.textPrimary, letterSpacing: -0.2),
-                        ),
-                        const SizedBox(width: 2),
-                        AnimatedRotation(
-                          turns: _monthExpanded ? 0.5 : 0,
-                          duration: const Duration(milliseconds: 200),
-                          child: const Icon(Icons.expand_more_rounded,
-                            size: 18, color: AppColors.purple),
-                        ),
-                      ],
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      value: spentRatio.toDouble(),
+                      minHeight: 6,
+                      backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.15),
+                      valueColor: AlwaysStoppedAnimation(
+                        spentRatio > 0.9 ? const Color(0xFFDC2626) : const Color(0xFFF59E0B)),
                     ),
                   ),
                 ),
-                if (!showingToday)
-                  GestureDetector(
-                    onTap: _jumpToToday,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      child: Text('Today', style: TextStyle(
-                        fontSize: 11.5, fontWeight: FontWeight.w700,
-                        color: AppColors.purple.withValues(alpha: 0.9))),
-                    ),
-                  ),
-                _CalendarArrow(icon: Icons.chevron_right_rounded, onTap: () => _shiftCalendar(1)),
+                const SizedBox(width: 10),
+                Text(
+                  income == 0
+                      ? 'No income yet'
+                      : '${(spentRatio * 100).toStringAsFixed(0)}% spent',
+                  style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 11, fontWeight: FontWeight.w600),
+                ),
               ],
-            ),
-            const SizedBox(height: 8),
-            // Weekday header
-            Row(
-              children: _weekdaysShort.map((d) => Expanded(
-                child: Center(
-                  child: Text(d, style: TextStyle(
-                    fontSize: 10, fontWeight: FontWeight.w700,
-                    color: AppColors.textSecondary.withValues(alpha: 0.65))),
-                ),
-              )).toList(),
-            ),
-            const SizedBox(height: 4),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.topCenter,
-              child: _monthExpanded ? _buildMonthGrid() : _buildWeekRow(),
             ),
           ],
         ),
@@ -549,44 +455,73 @@ class _BudgetPageState extends State<BudgetPage> {
     );
   }
 
-  /// Collapsed default: just the selected day's week.
-  Widget _buildWeekRow() {
-    final start = _weekStart;
-    return Row(
-      children: List.generate(7, (i) => Expanded(child: _dayCell(start.add(Duration(days: i))))),
-    );
-  }
+  // ── Transactions header: day stepper + tap-to-open calendar ──────────
 
-  /// Expanded: the whole month, Monday-first.
-  Widget _buildMonthGrid() {
-    final daysInMonth = DateTime(_visibleMonth.year, _visibleMonth.month + 1, 0).day;
-    final leadingBlanks = DateTime(_visibleMonth.year, _visibleMonth.month).weekday - 1;
-    final rows = ((leadingBlanks + daysInMonth) / 7).ceil();
+  Widget _buildTransactionsHeader() {
+    final isToday = _isSameDay(_selectedDay, DateTime.now());
+    final label = isToday
+        ? 'Today'
+        : '${_weekdaysShort[_selectedDay.weekday - 1]}, ${_selectedDay.day} '
+          '${_monthsShort[_selectedDay.month - 1]}';
 
     return Column(
-      children: List.generate(rows, (row) => Row(
-        children: List.generate(7, (col) {
-          final dayNum = row * 7 + col - leadingBlanks + 1;
-          if (dayNum < 1 || dayNum > daysInMonth) {
-            return const Expanded(child: SizedBox(height: 46));
-          }
-          return Expanded(
-            child: _dayCell(DateTime(_visibleMonth.year, _visibleMonth.month, dayNum)),
-          );
-        }),
-      )),
-    );
-  }
-
-  Widget _dayCell(DateTime day) {
-    final txns = BudgetRepository.onDay(day);
-    return _CalendarCell(
-      day: day,
-      income: BudgetRepository.totalOf(txns, TxnType.income),
-      expense: BudgetRepository.totalOf(txns, TxnType.expense),
-      isSelected: _isSameDay(day, _selectedDay),
-      isToday: _isSameDay(day, DateTime.now()),
-      onTap: () => _selectDay(day),
+      children: [
+        Row(
+          children: [
+            Container(width: 4, height: 16, decoration: BoxDecoration(
+              color: const Color(0xFF2563EB), borderRadius: BorderRadius.circular(4))),
+            const SizedBox(width: 8),
+            const Text('Transactions', style: TextStyle(
+              color: AppColors.textPrimary, fontSize: 16,
+              fontWeight: FontWeight.w800, letterSpacing: -0.2)),
+            const Spacer(),
+            // ‹  Today  ›  — arrows step a day, the label opens the calendar.
+            Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: AppColors.card,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _StepArrow(icon: Icons.chevron_left_rounded, onTap: () => _shiftDay(-1)),
+                  GestureDetector(
+                    onTap: _openCalendarSheet,
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.calendar_today_rounded,
+                            size: 12, color: AppColors.purple),
+                          const SizedBox(width: 5),
+                          Text(label, style: const TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.purple)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  _StepArrow(icon: Icons.chevron_right_rounded, onTap: () => _shiftDay(1)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        if (!isToday) ...[
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: GestureDetector(
+              onTap: _jumpToToday,
+              child: const Text('Back to today', style: TextStyle(
+                fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.purple)),
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -969,6 +904,129 @@ class _BudgetPageState extends State<BudgetPage> {
           ),
         ),
       ],
+    );
+  }
+}
+
+// =============================================================================
+// CALENDAR POPUP
+//
+// The month grid used to sit on the page and cost ~340px. It now opens on
+// demand from the summary card or the Transactions date chip, and returns the
+// day the student tapped.
+// =============================================================================
+
+class _CalendarSheet extends StatefulWidget {
+  final DateTime selectedDay;
+  const _CalendarSheet({required this.selectedDay});
+
+  @override
+  State<_CalendarSheet> createState() => _CalendarSheetState();
+}
+
+class _CalendarSheetState extends State<_CalendarSheet> {
+  late DateTime _month;
+
+  @override
+  void initState() {
+    super.initState();
+    _month = DateTime(widget.selectedDay.year, widget.selectedDay.month);
+  }
+
+  void _shiftMonth(int delta) =>
+      setState(() => _month = DateTime(_month.year, _month.month + delta));
+
+  @override
+  Widget build(BuildContext context) {
+    final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
+    final leadingBlanks = DateTime(_month.year, _month.month).weekday - 1; // Monday-first
+    final rows = ((leadingBlanks + daysInMonth) / 7).ceil();
+    final monthTxns = BudgetRepository.inMonth(_month);
+    final income = BudgetRepository.totalOf(monthTxns, TxnType.income);
+    final expense = BudgetRepository.totalOf(monthTxns, TxnType.expense);
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFFF8FAFF),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 20),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(width: 40, height: 5, decoration: BoxDecoration(
+              color: AppColors.border, borderRadius: BorderRadius.circular(999))),
+            const SizedBox(height: 14),
+            // Month switcher
+            Row(
+              children: [
+                _CalendarArrow(icon: Icons.chevron_left_rounded, onTap: () => _shiftMonth(-1)),
+                Expanded(
+                  child: Center(
+                    child: Text('${_months[_month.month - 1]} ${_month.year}',
+                      style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary, letterSpacing: -0.2)),
+                  ),
+                ),
+                _CalendarArrow(icon: Icons.chevron_right_rounded, onTap: () => _shiftMonth(1)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _LegendDot(color: const Color(0xFF10B981), label: _money(income)),
+                const SizedBox(width: 12),
+                _LegendDot(color: const Color(0xFFEF4444), label: _money(expense)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Weekday header
+            Row(
+              children: _weekdaysShort.map((d) => Expanded(
+                child: Center(
+                  child: Text(d, style: TextStyle(
+                    fontSize: 10.5, fontWeight: FontWeight.w700,
+                    color: AppColors.textSecondary.withValues(alpha: 0.65))),
+                ),
+              )).toList(),
+            ),
+            const SizedBox(height: 4),
+            // Day grid — tapping a day returns it and closes the popup.
+            ...List.generate(rows, (row) => Row(
+              children: List.generate(7, (col) {
+                final dayNum = row * 7 + col - leadingBlanks + 1;
+                if (dayNum < 1 || dayNum > daysInMonth) {
+                  return const Expanded(child: SizedBox(height: 46));
+                }
+                final day = DateTime(_month.year, _month.month, dayNum);
+                final txns = BudgetRepository.onDay(day);
+                return Expanded(
+                  child: _CalendarCell(
+                    day: day,
+                    income: BudgetRepository.totalOf(txns, TxnType.income),
+                    expense: BudgetRepository.totalOf(txns, TxnType.expense),
+                    isSelected: _isSameDay(day, widget.selectedDay),
+                    isToday: _isSameDay(day, DateTime.now()),
+                    onTap: () => Navigator.of(context).pop(day),
+                  ),
+                );
+              }),
+            )),
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: () {
+                final now = DateTime.now();
+                Navigator.of(context).pop(DateTime(now.year, now.month, now.day));
+              },
+              child: const Text('Jump to today'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1544,6 +1602,55 @@ class _AddFab extends StatelessWidget {
         foregroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: const Icon(Icons.add_rounded, size: 28),
+      ),
+    );
+  }
+}
+
+/// Opens the calendar popup from the summary card.
+class _CalendarButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _CalendarButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: AppColors.purple.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.purple.withValues(alpha: 0.18)),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.calendar_month_rounded, color: AppColors.purple, size: 18),
+            SizedBox(width: 6),
+            Text('Calendar', style: TextStyle(
+              fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.purple)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Small chevron used by the day stepper in the Transactions header.
+class _StepArrow extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _StepArrow({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        child: Icon(icon, size: 18, color: AppColors.textSecondary),
       ),
     );
   }
