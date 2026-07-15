@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "691517478489",
+    "project_id": "campustwin-2a63e",
+    "storage_bucket": "campustwin-2a63e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:691517478489:android:d5155016744fe83b198348",
+        "android_client_info": {
+          "package_name": "com.campustwin.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWRXor0Ty7-RFXITkp90MHmmfxitDW_m8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
