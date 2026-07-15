@@ -1,4 +1,4 @@
-package com.example.campus_twin
+package com.campustwin.app
 
 import io.flutter.embedding.android.FlutterActivity
 
