@@ -1,1355 +1,1502 @@
-import 'package:flutter/material.dart';
 import 'package:campus_twin/theme.dart';
+import 'package:flutter/material.dart';
 
-// =============================================================================
-// DATA MODELS — mirror the API response structure so the UI never changes when
-// you swap MockPlannerService for a real ApiPlannerService.
-// =============================================================================
+// The UI talks only to this contract. Replace MockPlannerRepository with an
+// API implementation later without changing PlannerPage or its widgets.
+abstract class PlannerRepository {
+  Future<List<PlannerSubject>> fetchSubjects();
 
-class StudyBlock {
-  final String id;
-  final String title;
-  final String subjectName;
-  final String subjectCode;
-  final TimeOfDay startTime;
-  final TimeOfDay endTime;
-  final String type;
-  final String? note;
-  final bool isCompleted;
-  final Color accent;
-  final String dayLabel; // 'Mon', 'Tue', …
+  Future<List<StudyBlock>> fetchWeek(DateTime weekStart);
 
-  const StudyBlock({
+  Future<StudyBlock> createTask(StudyBlockDraft draft);
+
+  Future<StudyBlock> setCompleted(String id, bool completed);
+
+  Future<void> deleteTask(String id);
+
+  Future<List<StudyBlock>> generateWeek(DateTime weekStart);
+}
+
+enum PlannerTaskType {
+  study('study', 'Study', Icons.menu_book_rounded),
+  assignment('assignment', 'Assignment', Icons.assignment_rounded),
+  revision('revision', 'Revision', Icons.replay_rounded),
+  classSession('class', 'Class', Icons.school_rounded),
+  examPrep('exam_prep', 'Exam prep', Icons.fact_check_rounded);
+
+  const PlannerTaskType(this.apiValue, this.label, this.icon);
+
+  final String apiValue;
+  final String label;
+  final IconData icon;
+
+  static PlannerTaskType fromApi(String? value) {
+    return values.firstWhere(
+      (type) => type.apiValue == value,
+      orElse: () => PlannerTaskType.study,
+    );
+  }
+}
+
+@immutable
+class PlannerSubject {
+  const PlannerSubject({
     required this.id,
-    required this.title,
-    required this.subjectName,
-    required this.subjectCode,
-    required this.startTime,
-    required this.endTime,
-    required this.type,
-    this.note,
-    this.isCompleted = false,
-    required this.accent,
-    required this.dayLabel,
+    required this.name,
+    required this.code,
+    required this.colorValue,
+    this.weeklyTargetMinutes = 0,
   });
 
-  Duration get duration => Duration(
-        hours: endTime.hour - startTime.hour,
-        minutes: endTime.minute - startTime.minute,
-      );
+  final String id;
+  final String name;
+  final String code;
+  final int colorValue;
+  final int weeklyTargetMinutes;
 
-  String get timeRangeLabel {
-    final s = startTime;
-    final e = endTime;
-    String pad(int n) => n.toString().padLeft(2, '0');
-    return '${pad(s.hour)}:${pad(s.minute)} - ${pad(e.hour)}:${pad(e.minute)}';
-  }
+  Color get color => Color(colorValue);
 
-  StudyBlock copyWith({bool? isCompleted, String? dayLabel}) {
-    return StudyBlock(
-      id: id,
-      title: title,
-      subjectName: subjectName,
-      subjectCode: subjectCode,
-      startTime: startTime,
-      endTime: endTime,
-      type: type,
-      note: note,
-      isCompleted: isCompleted ?? this.isCompleted,
-      accent: accent,
-      dayLabel: dayLabel ?? this.dayLabel,
+  factory PlannerSubject.fromJson(Map<String, dynamic> json) {
+    return PlannerSubject(
+      id: _requiredString(json, 'id'),
+      name: _requiredString(json, 'name'),
+      code: _requiredString(json, 'code'),
+      colorValue: _asInt(json['color_value']) ?? 0xFF4F46E5,
+      weeklyTargetMinutes: _asInt(json['weekly_target_minutes']) ?? 0,
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'subject_name': subjectName,
-        'subject_code': subjectCode,
-        'start_time': '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}',
-        'end_time': '${endTime.hour.toString().padLeft(2, '0')}:${endTime.minute.toString().padLeft(2, '0')}',
-        'type': type,
-        'note': note,
-        'is_completed': isCompleted,
-        'day_label': dayLabel,
-      };
+    'id': id,
+    'name': name,
+    'code': code,
+    'color_value': colorValue,
+    'weekly_target_minutes': weeklyTargetMinutes,
+  };
+}
 
-  factory StudyBlock.fromJson(Map<String, dynamic> json, {Color? accent}) {
-    TimeOfDay parseTime(String key) {
-      final parts = (json[key] as String).split(':');
-      return TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+@immutable
+class StudyBlock {
+  const StudyBlock({
+    required this.id,
+    required this.title,
+    required this.date,
+    required this.startMinute,
+    required this.endMinute,
+    required this.type,
+    required this.completed,
+    this.subjectId,
+    this.subjectName,
+    this.subjectCode,
+    this.note,
+  });
+
+  final String id;
+  final String title;
+  final DateTime date;
+  final int startMinute;
+  final int endMinute;
+  final PlannerTaskType type;
+  final bool completed;
+  final String? subjectId;
+  final String? subjectName;
+  final String? subjectCode;
+  final String? note;
+
+  int get durationMinutes => endMinute - startMinute;
+
+  StudyBlock copyWith({bool? completed}) => StudyBlock(
+    id: id,
+    title: title,
+    date: date,
+    startMinute: startMinute,
+    endMinute: endMinute,
+    type: type,
+    completed: completed ?? this.completed,
+    subjectId: subjectId,
+    subjectName: subjectName,
+    subjectCode: subjectCode,
+    note: note,
+  );
+
+  factory StudyBlock.fromJson(Map<String, dynamic> json) {
+    final start = _parseClock(_requiredString(json, 'start_time'));
+    final end = _parseClock(_requiredString(json, 'end_time'));
+    if (end <= start) {
+      throw const FormatException('end_time must be after start_time');
     }
     return StudyBlock(
-      id: json['id'] as String,
-      title: json['title'] as String,
-      subjectName: json['subject_name'] as String,
-      subjectCode: json['subject_code'] as String,
-      startTime: parseTime('start_time'),
-      endTime: parseTime('end_time'),
-      type: json['type'] as String,
-      note: json['note'] as String?,
-      isCompleted: json['is_completed'] as bool? ?? false,
-      accent: accent ?? AppColors.purple,
-      dayLabel: json['day_label'] as String,
+      id: _requiredString(json, 'id'),
+      title: _requiredString(json, 'title'),
+      date: _dateOnly(DateTime.parse(_requiredString(json, 'date'))),
+      startMinute: start,
+      endMinute: end,
+      type: PlannerTaskType.fromApi(json['type'] as String?),
+      completed: json['completed'] == true,
+      subjectId: _optionalString(json['subject_id']),
+      subjectName: _optionalString(json['subject_name']),
+      subjectCode: _optionalString(json['subject_code']),
+      note: _optionalString(json['note']),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'date': _apiDate(date),
+    'start_time': _apiTime(startMinute),
+    'end_time': _apiTime(endMinute),
+    'type': type.apiValue,
+    'completed': completed,
+    'subject_id': subjectId,
+    'subject_name': subjectName,
+    'subject_code': subjectCode,
+    'note': note,
+  };
 }
 
-class SubjectInfo {
-  final String id;
-  final String name;
-  final String code;
-  final Color color;
-  final double weeklyProgress;
-  final int completedHours;
-  final int totalHours;
-
-  const SubjectInfo({
-    required this.id,
-    required this.name,
-    required this.code,
-    required this.color,
-    required this.weeklyProgress,
-    required this.completedHours,
-    required this.totalHours,
+@immutable
+class StudyBlockDraft {
+  const StudyBlockDraft({
+    required this.title,
+    required this.date,
+    required this.startMinute,
+    required this.endMinute,
+    required this.type,
+    this.subjectId,
+    this.note,
   });
+
+  final String title;
+  final DateTime date;
+  final int startMinute;
+  final int endMinute;
+  final PlannerTaskType type;
+  final String? subjectId;
+  final String? note;
+
+  Map<String, dynamic> toJson() => {
+    'title': title,
+    'date': _apiDate(date),
+    'start_time': _apiTime(startMinute),
+    'end_time': _apiTime(endMinute),
+    'type': type.apiValue,
+    'subject_id': subjectId,
+    'note': note,
+  };
 }
 
-class WeekStats {
-  final int totalPlannedHours;
-  final int completedHours;
-  final int totalTasks;
-  final int completedTasks;
-
-  const WeekStats({
-    required this.totalPlannedHours,
-    required this.completedHours,
-    required this.totalTasks,
-    required this.completedTasks,
-  });
+class PlannerConflictException implements Exception {
+  const PlannerConflictException(this.message);
+  final String message;
 }
 
+class PlannerReadOnlyException implements Exception {
+  const PlannerReadOnlyException([
+    this.message = 'Tasks from a past date are read-only.',
+  ]);
 
+  final String message;
+}
 
-class _PlannerRepository {
+class MockPlannerRepository implements PlannerRepository {
+  MockPlannerRepository._();
 
-  static final List<SubjectInfo> _subjects = [
-    SubjectInfo(id: 's1', name: 'Database Systems', code: 'CSE301', color: const Color(0xFF4F46E5), weeklyProgress: 0.72, completedHours: 6, totalHours: 8),
-    SubjectInfo(id: 's2', name: 'Data Mining', code: 'CSE402', color: const Color(0xFF06B6D4), weeklyProgress: 0.55, completedHours: 4, totalHours: 7),
-    SubjectInfo(id: 's3', name: 'Machine Learning', code: 'CSE501', color: const Color(0xFFF59E0B), weeklyProgress: 0.45, completedHours: 3, totalHours: 7),
-    SubjectInfo(id: 's4', name: 'Software Eng.', code: 'CSE303', color: const Color(0xFF10B981), weeklyProgress: 0.88, completedHours: 5, totalHours: 6),
-    SubjectInfo(id: 's5', name: 'Internship', code: 'INT401', color: const Color(0xFFEC4899), weeklyProgress: 0.33, completedHours: 1, totalHours: 3),
-    SubjectInfo(id: 's6', name: 'Comp. Networks', code: 'CSE302', color: const Color(0xFF3B82F6), weeklyProgress: 0.60, completedHours: 3, totalHours: 5),
+  static final MockPlannerRepository instance = MockPlannerRepository._();
+
+  final List<PlannerSubject> _subjects = const [
+    PlannerSubject(
+      id: 's1',
+      name: 'Database Systems',
+      code: 'CSE301',
+      colorValue: 0xFF4F46E5,
+      weeklyTargetMinutes: 360,
+    ),
+    PlannerSubject(
+      id: 's2',
+      name: 'Data Mining',
+      code: 'CSE402',
+      colorValue: 0xFF0891B2,
+      weeklyTargetMinutes: 300,
+    ),
+    PlannerSubject(
+      id: 's3',
+      name: 'Machine Learning',
+      code: 'CSE501',
+      colorValue: 0xFFD97706,
+      weeklyTargetMinutes: 360,
+    ),
+    PlannerSubject(
+      id: 's4',
+      name: 'Software Engineering',
+      code: 'CSE303',
+      colorValue: 0xFF059669,
+      weeklyTargetMinutes: 240,
+    ),
+    PlannerSubject(
+      id: 's5',
+      name: 'Computer Networks',
+      code: 'CSE302',
+      colorValue: 0xFF2563EB,
+      weeklyTargetMinutes: 240,
+    ),
   ];
 
-  static Color _colorForSubject(String code) {
-    for (final s in _subjects) {
-      if (s.code == code) return s.color;
-    }
-    return AppColors.purple;
+  final List<StudyBlock> _tasks = [];
+  bool _seeded = false;
+  int _nextId = 100;
+
+  void _seed() {
+    if (_seeded) return;
+    _seeded = true;
+    final monday = _startOfWeek(DateTime.now());
+    _tasks.addAll([
+      _task(
+        '1',
+        'Review database normalization',
+        monday,
+        9 * 60,
+        10 * 60,
+        PlannerTaskType.revision,
+        's1',
+        note: 'Focus on 3NF and BCNF examples.',
+      ),
+      _task(
+        '2',
+        'Data mining practice',
+        monday,
+        11 * 60 + 30,
+        13 * 60,
+        PlannerTaskType.study,
+        's2',
+        note: 'Complete two clustering problems.',
+      ),
+      _task(
+        '3',
+        'ML assignment sprint',
+        monday.add(const Duration(days: 1)),
+        15 * 60,
+        16 * 60 + 30,
+        PlannerTaskType.assignment,
+        's3',
+      ),
+      _task(
+        '4',
+        'Networks quiz preparation',
+        monday.add(const Duration(days: 2)),
+        19 * 60,
+        20 * 60,
+        PlannerTaskType.examPrep,
+        's5',
+      ),
+      _task(
+        '5',
+        'Software project meeting',
+        monday.add(const Duration(days: 3)),
+        14 * 60,
+        15 * 60,
+        PlannerTaskType.classSession,
+        's4',
+      ),
+      _task(
+        '6',
+        'Weekly course review',
+        monday.add(const Duration(days: 4)),
+        16 * 60,
+        17 * 60,
+        PlannerTaskType.revision,
+        null,
+      ),
+    ]);
   }
 
-  static List<StudyBlock> _blocks = [];
-
-  static void _initBlocks() {
-    if (_blocks.isNotEmpty) return;
-    final raw = [
-      ('DB lecture review', 'CSE301', TimeOfDay(hour: 8, minute: 30), TimeOfDay(hour: 9, minute: 0), 'Warm-up', 'Scan lecture slides.', 'Mon'),
-      ('Data Mining study', 'CSE402', TimeOfDay(hour: 11, minute: 30), TimeOfDay(hour: 13, minute: 0), 'Focus block', 'Chapter summary + 2 practice problems.', 'Mon'),
-      ('DB assignment work', 'CSE301', TimeOfDay(hour: 15, minute: 0), TimeOfDay(hour: 16, minute: 15), 'Assignment', 'ER diagram for project.', 'Mon'),
-      ('SE lab prep', 'CSE303', TimeOfDay(hour: 10, minute: 0), TimeOfDay(hour: 11, minute: 30), 'Lecture', 'Review SRS template.', 'Tue'),
-      ('ML assignment sprint', 'CSE501', TimeOfDay(hour: 15, minute: 0), TimeOfDay(hour: 16, minute: 30), 'Assignment', 'Draft solution outline.', 'Tue'),
-      ('Networks quiz prep', 'CSE302', TimeOfDay(hour: 20, minute: 0), TimeOfDay(hour: 21, minute: 0), 'Revision', 'TCP/IP and OSI model.', 'Tue'),
-      ('Comp. Networks lecture', 'CSE302', TimeOfDay(hour: 9, minute: 0), TimeOfDay(hour: 10, minute: 30), 'Lecture', 'Attend class + take notes.', 'Wed'),
-      ('DB group project', 'CSE301', TimeOfDay(hour: 14, minute: 0), TimeOfDay(hour: 15, minute: 30), 'Assignment', 'Meet team for schema design.', 'Wed'),
-      ('Revision: ML basics', 'CSE501', TimeOfDay(hour: 17, minute: 0), TimeOfDay(hour: 18, minute: 0), 'Revision', 'Linear regression & gradient descent.', 'Wed'),
-      ('Data Mining quiz prep', 'CSE402', TimeOfDay(hour: 10, minute: 0), TimeOfDay(hour: 11, minute: 0), 'Revision', 'Clustering algorithms review.', 'Thu'),
-      ('ML study block', 'CSE501', TimeOfDay(hour: 13, minute: 0), TimeOfDay(hour: 14, minute: 30), 'Focus block', 'Work on neural nets assignment.', 'Thu'),
-      ('SE group meeting', 'CSE303', TimeOfDay(hour: 16, minute: 0), TimeOfDay(hour: 17, minute: 0), 'Assignment', 'Sprint review & task分配.', 'Thu'),
-      ('Internship report', 'INT401', TimeOfDay(hour: 9, minute: 0), TimeOfDay(hour: 11, minute: 0), 'Focus block', 'Write ISO 27001 audit draft.', 'Fri'),
-      ('Weekly review', '-', TimeOfDay(hour: 15, minute: 0), TimeOfDay(hour: 16, minute: 0), 'Revision', 'Review all subjects progress.', 'Fri'),
-      ('Light revision', '-', TimeOfDay(hour: 10, minute: 0), TimeOfDay(hour: 11, minute: 0), 'Revision', 'Go over weak topics.', 'Sat'),
-      ('Monday prep', 'CSE402', TimeOfDay(hour: 17, minute: 0), TimeOfDay(hour: 18, minute: 0), 'Warm-up', 'Preview Data Mining slides.', 'Sun'),
-    ];
-    int idCounter = 1;
-    _blocks = raw.map((r) {
-      final accent = r.$2 == '-' ? const Color(0xFF64748B) : _colorForSubject(r.$2);
-      return StudyBlock(
-        id: 'b${idCounter++}',
-        title: r.$1,
-        subjectCode: r.$2,
-        subjectName: _subjects.where((s) => s.code == r.$2).map((s) => s.name).firstOrNull ?? 'General',
-        startTime: r.$3,
-        endTime: r.$4,
-        type: r.$5,
-        note: r.$6,
-        accent: accent,
-        dayLabel: r.$7,
-      );
-    }).toList();
-  }
-
-  // -- Public mock methods (drop-in for real API) --
-
-  static List<_DayInfo> getWeekDays() {
-    final now = DateTime.now();
-    final monday = now.subtract(Duration(days: now.weekday - 1));
-    final labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final full = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    return List.generate(7, (i) {
-      final date = monday.add(Duration(days: i));
-      final isToday = date.day == now.day && date.month == now.month && date.year == now.year;
-      _initBlocks();
-      final hasActivity = _blocks.any((b) => b.dayLabel == labels[i] && !b.isCompleted);
-      return _DayInfo(
-        date: date,
-        label: labels[i],
-        fullLabel: full[i],
-        dayNumber: date.day,
-        isToday: isToday,
-        hasActivity: hasActivity,
-      );
-    });
-  }
-
-  static WeekStats getWeekStats() {
-    _initBlocks();
-    final totalMinutes = _blocks.fold<int>(0, (sum, b) => sum + b.duration.inMinutes);
-    final doneMinutes = _blocks.where((b) => b.isCompleted).fold<int>(0, (sum, b) => sum + b.duration.inMinutes);
-    return WeekStats(
-      totalPlannedHours: (totalMinutes / 60).round(),
-      completedHours: (doneMinutes / 60).round(),
-      totalTasks: _blocks.length,
-      completedTasks: _blocks.where((b) => b.isCompleted).length,
+  StudyBlock _task(
+    String id,
+    String title,
+    DateTime date,
+    int start,
+    int end,
+    PlannerTaskType type,
+    String? subjectId, {
+    String? note,
+  }) {
+    final subject = _subject(subjectId);
+    return StudyBlock(
+      id: id,
+      title: title,
+      date: _dateOnly(date),
+      startMinute: start,
+      endMinute: end,
+      type: type,
+      completed: false,
+      subjectId: subject?.id,
+      subjectName: subject?.name,
+      subjectCode: subject?.code,
+      note: note,
     );
   }
 
-  static List<StudyBlock> getBlocksForDay(String dayLabel) {
-    _initBlocks();
-    final blocks = _blocks.where((b) => b.dayLabel == dayLabel).toList();
-    blocks.sort((a, b) {
-      final cmp = a.startTime.hour.compareTo(b.startTime.hour);
-      if (cmp != 0) return cmp;
-      return a.startTime.minute.compareTo(b.startTime.minute);
-    });
-    return blocks;
+  PlannerSubject? _subject(String? id) {
+    if (id == null) return null;
+    for (final subject in _subjects) {
+      if (subject.id == id) return subject;
+    }
+    return null;
   }
 
-  static List<SubjectInfo> getSubjects() => List.unmodifiable(_subjects);
+  Future<void> _latency() =>
+      Future<void>.delayed(const Duration(milliseconds: 220));
 
-  static void toggleBlockComplete(String blockId) {
-    _initBlocks();
-    final idx = _blocks.indexWhere((b) => b.id == blockId);
-    if (idx == -1) return;
-    _blocks[idx] = _blocks[idx].copyWith(isCompleted: !_blocks[idx].isCompleted);
+  @override
+  Future<List<PlannerSubject>> fetchSubjects() async {
+    _seed();
+    await _latency();
+    return List.unmodifiable(_subjects);
   }
 
-  static void addBlock(StudyBlock block) {
-    _initBlocks();
-    _blocks.add(block);
+  @override
+  Future<List<StudyBlock>> fetchWeek(DateTime weekStart) async {
+    _seed();
+    await _latency();
+    final end = weekStart.add(const Duration(days: 7));
+    final result =
+        _tasks
+            .where(
+              (task) =>
+                  !task.date.isBefore(weekStart) && task.date.isBefore(end),
+            )
+            .toList()
+          ..sort(_sortTasks);
+    return List.unmodifiable(result);
   }
 
-  static void deleteBlock(String blockId) {
-    _initBlocks();
-    _blocks.removeWhere((b) => b.id == blockId);
+  @override
+  Future<StudyBlock> createTask(StudyBlockDraft draft) async {
+    _seed();
+    await _latency();
+    _validateDraft(draft);
+    final subject = _subject(draft.subjectId);
+    final task = StudyBlock(
+      id: 'local_${_nextId++}',
+      title: draft.title.trim(),
+      date: _dateOnly(draft.date),
+      startMinute: draft.startMinute,
+      endMinute: draft.endMinute,
+      type: draft.type,
+      completed: false,
+      subjectId: subject?.id,
+      subjectName: subject?.name,
+      subjectCode: subject?.code,
+      note: _optionalString(draft.note),
+    );
+    _tasks.add(task);
+    return task;
   }
 
-  static Future<void> generatePlan() async {
-    _initBlocks();
-    // Simulate a delay then "regenerate" by toggling some completion states.
-    await Future.delayed(const Duration(milliseconds: 800));
-    final now = DateTime.now();
-    final labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final todayLabel = labels[now.weekday - 1];
-    for (var i = 0; i < _blocks.length; i++) {
-      if (_blocks[i].dayLabel == todayLabel) {
-        _blocks[i] = _blocks[i].copyWith(isCompleted: false);
-      }
+  void _validateDraft(StudyBlockDraft draft) {
+    if (draft.title.trim().isEmpty || draft.title.trim().length > 80) {
+      throw const FormatException(
+        'Task title must contain 1 to 80 characters.',
+      );
+    }
+    if (draft.startMinute < 0 ||
+        draft.endMinute > 24 * 60 ||
+        draft.endMinute - draft.startMinute < 5) {
+      throw const FormatException(
+        'Choose a valid time range of at least 5 minutes.',
+      );
+    }
+    if (_dateOnly(draft.date).isBefore(_dateOnly(DateTime.now()))) {
+      throw const PlannerReadOnlyException(
+        'You cannot add a task to a date that has already passed.',
+      );
+    }
+    final overlaps = _tasks.any(
+      (task) =>
+          _sameDate(task.date, draft.date) &&
+          draft.startMinute < task.endMinute &&
+          draft.endMinute > task.startMinute,
+    );
+    if (overlaps) {
+      throw const PlannerConflictException(
+        'This time overlaps another task. Choose a free time.',
+      );
     }
   }
 
-  static void resetPlan() {
-    _blocks = [];
-    _initBlocks();
+  @override
+  Future<StudyBlock> setCompleted(String id, bool completed) async {
+    await _latency();
+    final index = _tasks.indexWhere((task) => task.id == id);
+    if (index < 0) throw StateError('Task no longer exists.');
+    if (_tasks[index].date.isBefore(_dateOnly(DateTime.now()))) {
+      throw const PlannerReadOnlyException();
+    }
+    _tasks[index] = _tasks[index].copyWith(completed: completed);
+    return _tasks[index];
+  }
+
+  @override
+  Future<void> deleteTask(String id) async {
+    await _latency();
+    final index = _tasks.indexWhere((task) => task.id == id);
+    if (index < 0) throw StateError('Task no longer exists.');
+    if (_tasks[index].date.isBefore(_dateOnly(DateTime.now()))) {
+      throw const PlannerReadOnlyException();
+    }
+    _tasks.removeAt(index);
+  }
+
+  @override
+  Future<List<StudyBlock>> generateWeek(DateTime weekStart) async {
+    _seed();
+    await Future<void>.delayed(const Duration(milliseconds: 650));
+    final suggestions = [
+      StudyBlockDraft(
+        title: 'Focused course review',
+        date: weekStart.add(const Duration(days: 1)),
+        startMinute: 9 * 60,
+        endMinute: 10 * 60,
+        type: PlannerTaskType.study,
+        subjectId: _subjects.first.id,
+      ),
+      StudyBlockDraft(
+        title: 'Practice and recall',
+        date: weekStart.add(const Duration(days: 5)),
+        startMinute: 10 * 60,
+        endMinute: 11 * 60,
+        type: PlannerTaskType.revision,
+        subjectId: _subjects[2].id,
+      ),
+    ];
+    for (final draft in suggestions) {
+      try {
+        _validateDraft(draft);
+        final subject = _subject(draft.subjectId);
+        _tasks.add(
+          StudyBlock(
+            id: 'generated_${_nextId++}',
+            title: draft.title,
+            date: draft.date,
+            startMinute: draft.startMinute,
+            endMinute: draft.endMinute,
+            type: draft.type,
+            completed: false,
+            subjectId: subject?.id,
+            subjectName: subject?.name,
+            subjectCode: subject?.code,
+            note: 'Suggested from your course load and available time.',
+          ),
+        );
+      } on PlannerConflictException {
+        // A generated suggestion never overwrites or overlaps a user's task.
+      } on PlannerReadOnlyException {
+        // Suggestions are never inserted into dates that have already passed.
+      }
+    }
+    return fetchWeek(weekStart);
   }
 }
 
-// =============================================================================
-// DAY INFO HELPER
-// =============================================================================
-
-class _DayInfo {
-  final DateTime date;
-  final String label;
-  final String fullLabel;
-  final int dayNumber;
-  final bool isToday;
-  final bool hasActivity;
-
-  _DayInfo({
-    required this.date,
-    required this.label,
-    required this.fullLabel,
-    required this.dayNumber,
-    this.isToday = false,
-    this.hasActivity = false,
-  });
-}
-
-// =============================================================================
-// PLANNER PAGE — StatefulWidget so interactions work with mock data.
-// =============================================================================
-
 class PlannerPage extends StatefulWidget {
-  const PlannerPage({super.key});
+  const PlannerPage({super.key, this.repository});
+
+  final PlannerRepository? repository;
 
   @override
   State<PlannerPage> createState() => _PlannerPageState();
 }
 
 class _PlannerPageState extends State<PlannerPage> {
-  late List<_DayInfo> _days;
-  late _DayInfo _selectedDay;
-  late WeekStats _stats;
-  late List<StudyBlock> _dayBlocks;
-  late List<SubjectInfo> _subjects;
-  bool _isGenerating = false;
+  late final PlannerRepository _repository;
+  late DateTime _weekStart;
+  late DateTime _selectedDate;
+  List<PlannerSubject> _subjects = const [];
+  List<StudyBlock> _tasks = const [];
+  bool _loading = true;
+  bool _generating = false;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _days = _PlannerRepository.getWeekDays();
-    _selectedDay = _days.firstWhere((d) => d.isToday, orElse: () => _days.first);
-    _stats = _PlannerRepository.getWeekStats();
-    _dayBlocks = _PlannerRepository.getBlocksForDay(_selectedDay.label);
-    _subjects = _PlannerRepository.getSubjects();
+    _repository = widget.repository ?? MockPlannerRepository.instance;
+    _weekStart = _startOfWeek(DateTime.now());
+    _selectedDate = _dateOnly(DateTime.now());
+    _load();
   }
 
-  void _selectDay(_DayInfo day) {
-    if (day.label == _selectedDay.label) return;
-    setState(() {
-      _selectedDay = day;
-      _dayBlocks = _PlannerRepository.getBlocksForDay(day.label);
-    });
-  }
-
-  void _refresh() {
-    // TODO: Also refetch subjects here — progress may have changed.
-    //   _subjects = await ApiService.getSubjects(userId);
-    setState(() {
-      _stats = _PlannerRepository.getWeekStats();
-      _dayBlocks = _PlannerRepository.getBlocksForDay(_selectedDay.label);
-      _days = _PlannerRepository.getWeekDays();
-    });
-  }
-
-  Future<void> _handleGenerate() async {
-    setState(() => _isGenerating = true);
-    await _PlannerRepository.generatePlan();
-    _refresh();
-    setState(() => _isGenerating = false);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Study plan optimised for the week!'),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+  Future<void> _load({bool showLoader = true}) async {
+    if (showLoader && mounted) setState(() => _loading = true);
+    try {
+      final results = await Future.wait<dynamic>([
+        _repository.fetchSubjects(),
+        _repository.fetchWeek(_weekStart),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _subjects = results[0] as List<PlannerSubject>;
+        _tasks = results[1] as List<StudyBlock>;
+        _error = null;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error =
+            'We could not load your planner. Check your connection and try again.';
+        _loading = false;
+      });
     }
   }
 
-  void _toggleComplete(String blockId) {
-    _PlannerRepository.toggleBlockComplete(blockId);
-    _refresh();
+  void _changeWeek(int offset) {
+    setState(() {
+      _weekStart = _weekStart.add(Duration(days: offset * 7));
+      final today = _dateOnly(DateTime.now());
+      _selectedDate = _isInWeek(today, _weekStart) ? today : _weekStart;
+      _loading = true;
+    });
+    _load(showLoader: false);
   }
 
-  void _deleteBlock(String blockId) {
-    _PlannerRepository.deleteBlock(blockId);
-    _refresh();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Task removed.'),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+  void _goToToday() {
+    final today = _dateOnly(DateTime.now());
+    setState(() {
+      _weekStart = _startOfWeek(today);
+      _selectedDate = today;
+      _loading = true;
+    });
+    _load(showLoader: false);
+  }
+
+  List<StudyBlock> get _selectedTasks =>
+      _tasks.where((task) => _sameDate(task.date, _selectedDate)).toList()
+        ..sort(_sortTasks);
+
+  bool get _selectedDateIsPast =>
+      _selectedDate.isBefore(_dateOnly(DateTime.now()));
+
+  bool get _weekIsPast => _weekStart
+      .add(const Duration(days: 6))
+      .isBefore(_dateOnly(DateTime.now()));
+
+  PlannerSubject? _subjectFor(StudyBlock task) {
+    for (final subject in _subjects) {
+      if (subject.id == task.subjectId) return subject;
+    }
+    return null;
+  }
+
+  Future<void> _toggleTask(StudyBlock task) async {
+    if (task.date.isBefore(_dateOnly(DateTime.now()))) {
+      _showMessage('Past tasks are read-only.');
+      return;
+    }
+    final index = _tasks.indexWhere((item) => item.id == task.id);
+    if (index < 0) return;
+    final previous = _tasks[index];
+    setState(() {
+      final copy = [..._tasks];
+      copy[index] = task.copyWith(completed: !task.completed);
+      _tasks = copy;
+    });
+    try {
+      await _repository.setCompleted(task.id, !task.completed);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        final copy = [..._tasks];
+        final current = copy.indexWhere((item) => item.id == task.id);
+        if (current >= 0) copy[current] = previous;
+        _tasks = copy;
+      });
+      _showMessage('Could not update this task. Please try again.');
     }
   }
 
-  void _showAddTaskSheet() {
-    _PlannerRepository.resetPlan();
-    showModalBottomSheet(
+  Future<void> _openAddTask() async {
+    if (_selectedDateIsPast) {
+      _showMessage('Choose today or a future date to add a task.');
+      return;
+    }
+    final created = await showModalBottomSheet<StudyBlock>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _AddTaskSheet(
-        selectedDayLabel: _selectedDay.label,
+      builder: (context) => _TaskEditorSheet(
+        repository: _repository,
         subjects: _subjects,
-        onAdd: (block) {
-          _PlannerRepository.addBlock(block);
-          _refresh();
-          Navigator.of(context).pop();
-        },
+        initialDate: _selectedDate,
       ),
     );
+    if (created == null || !mounted) return;
+    if (!_isInWeek(created.date, _weekStart)) {
+      setState(() {
+        _weekStart = _startOfWeek(created.date);
+        _selectedDate = created.date;
+      });
+      await _load();
+    } else {
+      setState(() {
+        _tasks = [..._tasks, created]..sort(_sortTasks);
+        _selectedDate = created.date;
+      });
+    }
+    _showMessage('Task added to your planner.');
   }
 
-  void _showBlockDetail(StudyBlock block) {
-    showModalBottomSheet(
+  Future<void> _openDetails(StudyBlock task) async {
+    final action = await showModalBottomSheet<_TaskAction>(
       context: context,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _BlockDetailSheet(
-        block: block,
-        onToggle: () {
-          _toggleComplete(block.id);
-          Navigator.of(context).pop();
-        },
-        onDelete: () {
-          _deleteBlock(block.id);
-          Navigator.of(context).pop();
-        },
+      builder: (context) => _TaskDetailSheet(
+        task: task,
+        color: _subjectFor(task)?.color ?? AppColors.purple,
+        readOnly: task.date.isBefore(_dateOnly(DateTime.now())),
       ),
     );
+    if (!mounted || action == null) return;
+    if (action == _TaskAction.toggle) {
+      await _toggleTask(task);
+      return;
+    }
+    await _deleteTask(task);
+  }
+
+  Future<void> _deleteTask(StudyBlock task) async {
+    if (task.date.isBefore(_dateOnly(DateTime.now()))) {
+      _showMessage('Past tasks are read-only and cannot be deleted.');
+      return;
+    }
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Delete task?'),
+            content: Text('“${task.title}” will be permanently removed.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFFDC2626),
+                ),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed) return;
+    try {
+      await _repository.deleteTask(task.id);
+      if (!mounted) return;
+      setState(
+        () => _tasks = _tasks.where((item) => item.id != task.id).toList(),
+      );
+      _showMessage('Task deleted.');
+    } catch (_) {
+      if (mounted) {
+        _showMessage('Could not delete this task. Please try again.');
+      }
+    }
+  }
+
+  Future<void> _generatePlan() async {
+    if (_generating) return;
+    if (_weekIsPast) {
+      _showMessage('Past weeks are read-only.');
+      return;
+    }
+    if (_tasks.isNotEmpty) {
+      final proceed =
+          await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Add smart suggestions?'),
+              content: const Text(
+                'CampusTwin will fill available time only. Your existing tasks will stay unchanged.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Not now'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Add suggestions'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      if (!proceed) return;
+    }
+    setState(() => _generating = true);
+    try {
+      final tasks = await _repository.generateWeek(_weekStart);
+      if (!mounted) return;
+      setState(() => _tasks = tasks);
+      _showMessage('Your week has been updated with available study blocks.');
+    } catch (_) {
+      if (mounted) _showMessage('Could not generate suggestions right now.');
+    } finally {
+      if (mounted) setState(() => _generating = false);
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.white, Color(0xFFF6F9FF), Colors.white],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: SafeArea(
-          bottom: false,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 110),
-            children: [
-              _buildWeekHeader(),
-              const SizedBox(height: 14),
-              _buildDayStrip(),
-              const SizedBox(height: 20),
-              _buildStatsRow(),
-              const SizedBox(height: 20),
-              _buildSectionTitle('Today\'s plan'),
-              const SizedBox(height: 10),
-              _buildDaySchedule(),
-              const SizedBox(height: 20),
-              _buildSectionTitle('Subjects'),
-              const SizedBox(height: 10),
-              _buildSubjectsRow(),
-              const SizedBox(height: 20),
-              _buildQuickActions(),
-            ],
-          ),
-        ),
+    return SafeArea(
+      bottom: false,
+      child: RefreshIndicator(
+        color: AppColors.purple,
+        onRefresh: () => _load(showLoader: false),
+        child: _loading
+            ? const _PlannerLoadingView()
+            : _error != null
+            ? _PlannerErrorView(message: _error!, onRetry: _load)
+            : ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 100),
+                children: [
+                  _buildTitle(),
+                  const SizedBox(height: 20),
+                  _buildWeekPicker(),
+                  const SizedBox(height: 14),
+                  _buildDayPicker(),
+                  const SizedBox(height: 20),
+                  _buildOverview(),
+                  const SizedBox(height: 24),
+                  _buildScheduleHeader(),
+                  const SizedBox(height: 10),
+                  _buildSchedule(),
+                  const SizedBox(height: 24),
+                  _buildSubjectProgress(),
+                  const SizedBox(height: 20),
+                  _buildSmartPlanCard(),
+                ],
+              ),
       ),
     );
   }
 
-  // -- Week header (month label + left/right arrows) --
-
-  Widget _buildWeekHeader() {
-    final monday = _days.first.date;
-    final sunday = _days.last.date;
-    final monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    final label = '${monthNames[monday.month - 1]} ${monday.day} - ${sunday.day}, ${monday.year}';
-    return Row(
+  Widget _buildTitle() {
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: AppColors.card,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
-          ),
-          child: IconButton(
-            icon: const Icon(Icons.chevron_left_rounded, size: 22),
-            color: AppColors.textSecondary,
-            onPressed: () {},
+        Text(
+          'Study planner',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            color: AppColors.textPrimary,
+            letterSpacing: -0.5,
           ),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Week ${_weekNumber(monday)}',
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: AppColors.card,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
-          ),
-          child: IconButton(
-            icon: const Icon(Icons.chevron_right_rounded, size: 22),
-            color: AppColors.textSecondary,
-            onPressed: () {},
-          ),
+        SizedBox(height: 3),
+        Text(
+          'Plan clearly. Study consistently.',
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
         ),
       ],
     );
   }
 
-  int _weekNumber(DateTime date) {
-    final startOfYear = DateTime(date.year, 1, 1);
-    final diff = date.difference(startOfYear).inDays;
-    return ((diff + startOfYear.weekday - 1) / 7).ceil();
-  }
-
-  // -- Horizontal day strip --
-
-  Widget _buildDayStrip() {
-    return SizedBox(
-      height: 76,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: _days.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (ctx, i) => _DayBubble(
-          day: _days[i],
-          isSelected: _days[i].label == _selectedDay.label,
-          onTap: () => _selectDay(_days[i]),
-        ),
-      ),
-    );
-  }
-
-  // -- Stats row --
-
-  Widget _buildStatsRow() {
-    return Row(
-      children: [
-        Expanded(child: _StatCard(
-          icon: Icons.schedule_rounded,
-          label: 'Planned',
-          value: '${_stats.totalPlannedHours}h',
-          accent: AppColors.purple,
-        )),
-        const SizedBox(width: 10),
-        Expanded(child: _StatCard(
-          icon: Icons.check_circle_outline_rounded,
-          label: 'Completed',
-          value: '${_stats.completedHours}h',
-          accent: const Color(0xFF10B981),
-        )),
-        const SizedBox(width: 10),
-        Expanded(child: _StatCard(
-          icon: Icons.task_alt_rounded,
-          label: 'Tasks',
-          value: '${_stats.completedTasks}/${_stats.totalTasks}',
-          accent: const Color(0xFF06B6D4),
-        )),
-      ],
-    );
-  }
-
-  // -- Today's plan schedule --
-
-  Widget _buildDaySchedule() {
-    if (_dayBlocks.isEmpty) {
-      return _emptyState(
-        _selectedDay.isToday
-            ? 'No study blocks planned for today. Tap + to add one!'
-            : 'Nothing scheduled for ${_selectedDay.fullLabel}.',
-        Icons.event_busy_rounded,
-      );
-    }
-    return Column(
-      children: _dayBlocks.map((block) => _ScheduleCard(
-        block: block,
-        onToggle: () => _toggleComplete(block.id),
-        onTap: () => _showBlockDetail(block),
-        onDelete: () => _deleteBlock(block.id),
-      )).toList(),
-    );
-  }
-
-  // -- Subjects horizontal scroll --
-
-  Widget _buildSubjectsRow() {
-    if (_subjects.isEmpty) {
-      return _emptyState('No subjects added yet.', Icons.menu_book_rounded);
-    }
-    return SizedBox(
-      height: 110,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: _subjects.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 10),
-        itemBuilder: (ctx, i) => _SubjectChip(subject: _subjects[i]),
-      ),
-    );
-  }
-
-  // -- Quick actions --
-
-  Widget _buildQuickActions() {
-    return _GlowCard(
-      radius: 18,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
+  Widget _buildWeekPicker() {
+    final end = _weekStart.add(const Duration(days: 6));
+    final isCurrent = _sameDate(_weekStart, _startOfWeek(DateTime.now()));
+    return _SurfaceCard(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Previous week',
+            onPressed: () => _changeWeek(-1),
+            icon: const Icon(Icons.chevron_left_rounded),
+          ),
+          Expanded(
+            child: Column(
               children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 50,
-                    child: OutlinedButton.icon(
-                      onPressed: _showAddTaskSheet,
-                      icon: const Icon(Icons.add_task_rounded, size: 18),
-                      label: const Text('Add task', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
-                      style: OutlinedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: AppColors.textPrimary,
-                        side: const BorderSide(color: AppColors.border),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                    ),
+                Text(
+                  _weekRange(_weekStart, end),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: SizedBox(
-                    height: 50,
-                    child: OutlinedButton.icon(
-                      onPressed: _isGenerating ? null : _handleGenerate,
-                      icon: _isGenerating
-                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.auto_awesome_rounded, size: 18),
-                      label: Text(
-                        _isGenerating ? 'Optimising…' : 'Generate',
-                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        backgroundColor: Color(0xFF4F46E5).withValues(alpha: 0.06),
-                        foregroundColor: AppColors.purple,
-                        side: BorderSide(color: AppColors.purple.withValues(alpha: 0.25)),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                    ),
+                const SizedBox(height: 2),
+                Text(
+                  isCurrent
+                      ? 'Current week'
+                      : 'Week ${_isoWeekNumber(_weekStart)}',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: AppColors.textSecondary,
                   ),
                 ),
               ],
             ),
-          ],
-        ),
+          ),
+          if (!isCurrent)
+            TextButton(onPressed: _goToToday, child: const Text('Today'))
+          else
+            IconButton(
+              tooltip: 'Next week',
+              onPressed: () => _changeWeek(1),
+              icon: const Icon(Icons.chevron_right_rounded),
+            ),
+          if (!isCurrent)
+            IconButton(
+              tooltip: 'Next week',
+              onPressed: () => _changeWeek(1),
+              icon: const Icon(Icons.chevron_right_rounded),
+            ),
+        ],
       ),
     );
   }
 
-  // -- Shared widgets --
+  Widget _buildDayPicker() {
+    return SizedBox(
+      height: 80,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: 7,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final date = _weekStart.add(Duration(days: index));
+          final selected = _sameDate(date, _selectedDate);
+          final today = _sameDate(date, DateTime.now());
+          final isPast = date.isBefore(_dateOnly(DateTime.now()));
+          final hasTasks = _tasks.any((task) => _sameDate(task.date, date));
+          return Semantics(
+            button: true,
+            selected: selected,
+            label: '${_weekdayLong(date.weekday)} ${date.day}',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: () => setState(() => _selectedDate = date),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: 54,
+                padding: const EdgeInsets.symmetric(vertical: 9),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? (isPast ? const Color(0xFFE2E8F0) : AppColors.purple)
+                      : (isPast ? const Color(0xFFF1F5F9) : AppColors.card),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: isPast
+                        ? const Color(0xFFCBD5E1)
+                        : (selected ? AppColors.purple : AppColors.border),
+                  ),
+                  boxShadow: selected && !isPast
+                      ? [
+                          BoxShadow(
+                            color: AppColors.purple.withValues(alpha: 0.2),
+                            blurRadius: 12,
+                            offset: const Offset(0, 5),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      _weekdayShort(date.weekday),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: selected && !isPast
+                            ? Colors.white70
+                            : AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${date.day}',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: selected && !isPast
+                            ? Colors.white
+                            : (isPast
+                                  ? AppColors.textSecondary
+                                  : AppColors.textPrimary),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    if (isPast)
+                      Icon(
+                        Icons.lock_outline_rounded,
+                        size: 9,
+                        color: AppColors.textSecondary,
+                      )
+                    else
+                      Container(
+                        width: 5,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: hasTasks
+                              ? (selected ? Colors.white : AppColors.purple)
+                              : (today
+                                    ? const Color(0xFFF59E0B)
+                                    : Colors.transparent),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 
-  Widget _buildSectionTitle(String title) {
+  Widget _buildOverview() {
+    final totalMinutes = _tasks.fold<int>(
+      0,
+      (sum, task) => sum + task.durationMinutes,
+    );
+    final completedMinutes = _tasks
+        .where((task) => task.completed)
+        .fold<int>(0, (sum, task) => sum + task.durationMinutes);
+    final completedTasks = _tasks.where((task) => task.completed).length;
+    final progress = totalMinutes == 0 ? 0.0 : completedMinutes / totalMinutes;
+    return _SurfaceCard(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 56,
+                height: 56,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    CircularProgressIndicator(
+                      value: progress,
+                      strokeWidth: 7,
+                      backgroundColor: AppColors.inputFill,
+                      color: const Color(0xFF10B981),
+                      strokeCap: StrokeCap.round,
+                    ),
+                    Center(
+                      child: Text(
+                        '${(progress * 100).round()}%',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Weekly progress',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      totalMinutes == 0
+                          ? 'Add a task to start your week.'
+                          : '$completedTasks of ${_tasks.length} tasks completed',
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _Metric(
+                  icon: Icons.schedule_rounded,
+                  label: 'Planned',
+                  value: _durationLabel(totalMinutes),
+                  color: AppColors.purple,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _Metric(
+                  icon: Icons.task_alt_rounded,
+                  label: 'Completed',
+                  value: _durationLabel(completedMinutes),
+                  color: const Color(0xFF059669),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _Metric(
+                  icon: Icons.pending_actions_rounded,
+                  label: 'Remaining',
+                  value: '${_tasks.length - completedTasks}',
+                  color: const Color(0xFFD97706),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScheduleHeader() {
+    final today = _sameDate(_selectedDate, DateTime.now());
     return Row(
       children: [
-        Container(
-          width: 4,
-          height: 16,
-          decoration: BoxDecoration(
-            color: const Color(0xFF2563EB),
-            borderRadius: BorderRadius.circular(4),
+        Expanded(
+          child: _SectionTitle(
+            title: today
+                ? 'Today’s plan'
+                : '${_weekdayLong(_selectedDate.weekday)}’s plan',
           ),
         ),
-        const SizedBox(width: 8),
-        Text(
-          title,
-          style: const TextStyle(
-            color: AppColors.textPrimary,
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.2,
-          ),
-        ),
-        const Spacer(),
-        if (title == 'Today\'s plan' && _dayBlocks.isNotEmpty)
-          Text(
-            '${_dayBlocks.where((b) => b.isCompleted).length}/${_dayBlocks.length}',
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
+        if (_selectedDateIsPast)
+          const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.lock_outline_rounded, size: 14),
+              SizedBox(width: 4),
+              Text(
+                'Read-only',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+            ],
+          )
+        else
+          FilledButton.icon(
+            onPressed: _openAddTask,
+            icon: const Icon(Icons.add_rounded, size: 17),
+            label: const Text('New task'),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.purple,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(0, 38),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
       ],
     );
   }
 
-  Widget _emptyState(String message, IconData icon) {
-    return _GlowCard(
-      radius: 16,
-      strokeWidth: 1.2,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
-        alignment: Alignment.center,
-        child: Column(
-          children: [
-            Icon(icon, size: 40, color: AppColors.textSecondary.withValues(alpha: 0.4)),
-            const SizedBox(height: 12),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13.5, height: 1.4),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// =============================================================================
-// DAY BUBBLE
-// =============================================================================
-
-class _DayBubble extends StatelessWidget {
-  final _DayInfo day;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _DayBubble({required this.day, required this.isSelected, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-        width: 52,
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.purple : AppColors.card,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected
-                ? AppColors.purple
-                : day.hasActivity
-                    ? AppColors.purple.withValues(alpha: 0.25)
-                    : AppColors.border.withValues(alpha: 0.5),
-            width: isSelected ? 1.5 : 1,
-          ),
-          boxShadow: isSelected
-              ? [BoxShadow(color: AppColors.purple.withValues(alpha: 0.25), blurRadius: 10, offset: const Offset(0, 4))]
-              : [],
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              day.label,
-              style: TextStyle(
-                color: isSelected ? Colors.white : AppColors.textSecondary,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              day.dayNumber.toString(),
-              style: TextStyle(
-                color: isSelected ? Colors.white : AppColors.textPrimary,
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            if (day.hasActivity && !isSelected)
-              Container(
-                margin: const EdgeInsets.only(top: 3),
-                width: 5,
-                height: 5,
-                decoration: const BoxDecoration(
-                  color: AppColors.purple,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            if (isSelected)
-              Container(
-                margin: const EdgeInsets.only(top: 3),
-                width: 5,
-                height: 5,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// =============================================================================
-// STAT CARD
-// =============================================================================
-
-class _StatCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color accent;
-
-  const _StatCard({required this.icon, required this.label, required this.value, required this.accent});
-
-  @override
-  Widget build(BuildContext context) {
-    return _GlowCard(
-      radius: 18,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+  Widget _buildSchedule() {
+    final tasks = _selectedTasks;
+    if (tasks.isEmpty) {
+      return _SurfaceCard(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
         child: Column(
           children: [
             Container(
-              padding: const EdgeInsets.all(8),
+              width: 48,
+              height: 48,
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [accent.withValues(alpha: 0.16), accent.withValues(alpha: 0.06)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(10),
+                color: AppColors.purple.withValues(alpha: 0.08),
+                shape: BoxShape.circle,
               ),
-              child: Icon(icon, color: accent, size: 18),
+              child: const Icon(
+                Icons.event_available_rounded,
+                color: AppColors.purple,
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Text(
-              value,
+              _selectedDateIsPast
+                  ? 'No tasks were planned'
+                  : 'No tasks planned',
               style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 16,
+                fontSize: 15,
                 fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
               ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 5),
             Text(
-              label,
+              _selectedDateIsPast
+                  ? 'This date has passed and is now read-only.'
+                  : 'Keep this time free or add a focused study block.',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// =============================================================================
-// SCHEDULE CARD
-// =============================================================================
-
-class _ScheduleCard extends StatelessWidget {
-  final StudyBlock block;
-  final VoidCallback onToggle;
-  final VoidCallback onTap;
-  final VoidCallback onDelete;
-
-  const _ScheduleCard({required this.block, required this.onToggle, required this.onTap, required this.onDelete});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Dismissible(
-        key: ValueKey(block.id),
-        direction: DismissDirection.endToStart,
-        background: Container(
-          alignment: Alignment.centerRight,
-          padding: const EdgeInsets.only(right: 20),
-          decoration: BoxDecoration(
-            color: const Color(0xFFDC2626).withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: const Icon(Icons.delete_outline_rounded, color: Color(0xFFDC2626), size: 24),
-        ),
-        confirmDismiss: (_) async {
-          onDelete();
-          return false;
-        },
-        child: GestureDetector(
-          onTap: onTap,
-          child: _GlowCard(
-            radius: 16,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 350),
-              curve: Curves.easeOutCubic,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                color: block.isCompleted ? const Color(0xFF10B981).withValues(alpha: 0.04) : null,
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Time column
-                  SizedBox(
-                    width: 48,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${block.startTime.hour.toString().padLeft(2, '0')}:${block.startTime.minute.toString().padLeft(2, '0')}',
-                          style: TextStyle(
-                            color: block.isCompleted ? AppColors.textSecondary.withValues(alpha: 0.6) : AppColors.textPrimary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${block.endTime.hour.toString().padLeft(2, '0')}:${block.endTime.minute.toString().padLeft(2, '0')}',
-                          style: TextStyle(
-                            color: AppColors.textSecondary.withValues(alpha: block.isCompleted ? 0.4 : 0.7),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Accent bar
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 350),
-                    width: 4,
-                    height: block.isCompleted ? 32 : 44,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          block.isCompleted ? const Color(0xFF10B981) : block.accent,
-                          block.isCompleted ? const Color(0xFF10B981).withValues(alpha: 0.4) : block.accent.withValues(alpha: 0.45),
-                        ],
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                      ),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Content
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                block.title,
-                                style: TextStyle(
-                                  color: block.isCompleted ? AppColors.textSecondary.withValues(alpha: 0.7) : AppColors.textPrimary,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  decoration: block.isCompleted ? TextDecoration.lineThrough : null,
-                                ),
-                              ),
-                            ),
-                            // Completion toggle
-                            GestureDetector(
-                              onTap: onToggle,
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 300),
-                                width: 26,
-                                height: 26,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: block.isCompleted ? const Color(0xFF10B981) : Colors.transparent,
-                                  border: Border.all(
-                                    color: block.isCompleted ? const Color(0xFF10B981) : AppColors.border,
-                                    width: block.isCompleted ? 0 : 2,
-                                  ),
-                                ),
-                                child: block.isCompleted
-                                    ? const Icon(Icons.check_rounded, color: Colors.white, size: 16)
-                                    : null,
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (block.note != null && block.note!.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            block.note!,
-                            style: TextStyle(
-                              color: AppColors.textSecondary.withValues(alpha: block.isCompleted ? 0.5 : 0.8),
-                              fontSize: 12,
-                              height: 1.3,
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            _Tag(label: block.type, color: block.accent),
-                            const SizedBox(width: 8),
-                            _Tag(label: block.subjectName, color: const Color(0xFF64748B)),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              style: TextStyle(
+                fontSize: 12.5,
+                color: AppColors.textSecondary,
+                height: 1.4,
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// =============================================================================
-// SUBJECT CHIP
-// =============================================================================
-
-class _SubjectChip extends StatelessWidget {
-  final SubjectInfo subject;
-
-  const _SubjectChip({required this.subject});
-
-  @override
-  Widget build(BuildContext context) {
-    final progress = subject.weeklyProgress.clamp(0.0, 1.0);
-    return _GlowCard(
-      radius: 16,
-      child: SizedBox(
-        width: 130,
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: subject.color,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      subject.code,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    '${(progress * 100).toInt()}%',
-                    style: TextStyle(
-                      color: subject.color,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                subject.name,
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 11.5,
-                  height: 1.2,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+            if (!_selectedDateIsPast) ...[
               const SizedBox(height: 10),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 5,
-                  backgroundColor: AppColors.border.withValues(alpha: 0.4),
-                  valueColor: AlwaysStoppedAnimation<Color>(subject.color),
-                ),
+              TextButton.icon(
+                onPressed: _openAddTask,
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Add a task'),
               ),
             ],
+          ],
+        ),
+      );
+    }
+    return Column(
+      children: [
+        for (final task in tasks)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _TaskCard(
+              task: task,
+              color: _subjectFor(task)?.color ?? AppColors.purple,
+              onToggle: () => _toggleTask(task),
+              onTap: () => _openDetails(task),
+              onDelete: () => _deleteTask(task),
+              readOnly: _selectedDateIsPast,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildSubjectProgress() {
+    if (_subjects.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionTitle(title: 'Course focus'),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 114,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _subjects.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              final subject = _subjects[index];
+              final planned = _tasks
+                  .where((task) => task.subjectId == subject.id)
+                  .fold<int>(0, (sum, task) => sum + task.durationMinutes);
+              final target = subject.weeklyTargetMinutes;
+              final progress = target == 0
+                  ? 0.0
+                  : (planned / target).clamp(0.0, 1.0);
+              return Container(
+                width: 164,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.card,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 9,
+                          height: 9,
+                          decoration: BoxDecoration(
+                            color: subject.color,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        Expanded(
+                          child: Text(
+                            subject.code,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      subject.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const Spacer(),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(99),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 6,
+                        backgroundColor: AppColors.inputFill,
+                        color: subject.color,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${_durationLabel(planned)} planned',
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ),
-      ),
+      ],
     );
   }
-}
 
-// =============================================================================
-// TAG
-// =============================================================================
-
-class _Tag extends StatelessWidget {
-  final String label;
-  final Color color;
-
-  const _Tag({required this.label, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildSmartPlanCard() {
+    final readOnly = _weekIsPast;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.15)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 10.5,
-          fontWeight: FontWeight.w700,
+        gradient: const LinearGradient(
+          colors: [Color(0xFF4338CA), Color(0xFF2563EB)],
         ),
-      ),
-    );
-  }
-}
-
-// =============================================================================
-// GLOW CARD (shared visual wrapper, same design language as the dashboard)
-// =============================================================================
-
-class _GlowCard extends StatelessWidget {
-  final Widget child;
-  final double radius;
-  final double strokeWidth;
-  const _GlowCard({
-    required this.child,
-    this.radius = 16,
-    this.strokeWidth = 1.6,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(radius),
+        borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: Color(0xFF2563EB).withValues(alpha: 0.22),
+            color: AppColors.purple.withValues(alpha: 0.22),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
         ],
       ),
-      child: _StaticBorderBox(
-        borderRadius: radius,
-        strokeWidth: strokeWidth,
-        child: child,
-      ),
-    );
-  }
-}
-
-class _StaticBorderBox extends StatelessWidget {
-  final Widget child;
-  final double borderRadius;
-  final double strokeWidth;
-  const _StaticBorderBox({
-    required this.child,
-    this.borderRadius = 16,
-    this.strokeWidth = 1.6,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _RotatingBorderPainter(
-        t: 0,
-        radius: borderRadius,
-        strokeWidth: strokeWidth,
-        colors: const [Color(0xFF1E40AF), Color(0xFF3B82F6), Color(0xFF1E40AF)],
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(strokeWidth),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular((borderRadius - strokeWidth).clamp(0, borderRadius)),
-          child: ColoredBox(
-            color: AppColors.card,
-            child: child,
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(Icons.auto_awesome_rounded, color: Colors.white),
           ),
-        ),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  readOnly ? 'Past week archived' : 'Build a balanced week',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  readOnly
+                      ? 'Tasks in this week can be viewed but not changed.'
+                      : 'Fill free time without changing existing tasks.',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11.5,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          FilledButton(
+            onPressed: _generating || readOnly ? null : _generatePlan,
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: AppColors.purple,
+              disabledBackgroundColor: Colors.white70,
+              minimumSize: const Size(72, 42),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+            ),
+            child: _generating
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.purple,
+                    ),
+                  )
+                : Icon(
+                    readOnly
+                        ? Icons.lock_outline_rounded
+                        : Icons.arrow_forward_rounded,
+                    size: 19,
+                  ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _RotatingBorderPainter extends CustomPainter {
-  final double t;
-  final double radius;
-  final double strokeWidth;
-  final List<Color> colors;
-
-  _RotatingBorderPainter({
-    required this.t,
-    required this.radius,
-    required this.strokeWidth,
-    required this.colors,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Rect.fromLTWH(
-      strokeWidth / 2,
-      strokeWidth / 2,
-      size.width - strokeWidth,
-      size.height - strokeWidth,
-    );
-    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(radius));
-    final sweepColors = [...colors, colors.first];
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..shader = SweepGradient(
-        colors: sweepColors,
-        transform: GradientRotation(t * 2 * 3.14159265),
-      ).createShader(rect);
-    canvas.drawRRect(rrect, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _RotatingBorderPainter oldDelegate) {
-    return oldDelegate.t != t || oldDelegate.colors != colors;
-  }
-}
-
-// =============================================================================
-// ADD TASK BOTTOM SHEET
-// =============================================================================
-
-class _AddTaskSheet extends StatefulWidget {
-  final String selectedDayLabel;
-  final List<SubjectInfo> subjects;
-  final ValueChanged<StudyBlock> onAdd;
-
-  const _AddTaskSheet({
-    required this.selectedDayLabel,
+class _TaskEditorSheet extends StatefulWidget {
+  const _TaskEditorSheet({
+    required this.repository,
     required this.subjects,
-    required this.onAdd,
+    required this.initialDate,
   });
 
+  final PlannerRepository repository;
+  final List<PlannerSubject> subjects;
+  final DateTime initialDate;
+
   @override
-  State<_AddTaskSheet> createState() => _AddTaskSheetState();
+  State<_TaskEditorSheet> createState() => _TaskEditorSheetState();
 }
 
-class _AddTaskSheetState extends State<_AddTaskSheet> {
+class _TaskEditorSheetState extends State<_TaskEditorSheet> {
   final _formKey = GlobalKey<FormState>();
-  final _titleCtrl = TextEditingController();
-  final _noteCtrl = TextEditingController();
-
-  late TimeOfDay _startTime;
-  late TimeOfDay _endTime;
-  late String _selectedSubjectCode;
-  late String _selectedType;
-  late String _selectedDay;
-
-  final _types = ['Warm-up', 'Focus block', 'Lecture', 'Assignment', 'Revision'];
+  final _titleController = TextEditingController();
+  final _noteController = TextEditingController();
+  late DateTime _date;
+  int _startMinute = 9 * 60;
+  int _endMinute = 10 * 60;
+  String? _subjectId;
+  PlannerTaskType _type = PlannerTaskType.study;
+  bool _saving = false;
+  String? _timeError;
 
   @override
   void initState() {
     super.initState();
-    _startTime = const TimeOfDay(hour: 9, minute: 0);
-    _endTime = const TimeOfDay(hour: 10, minute: 0);
-    _selectedSubjectCode = widget.subjects.isNotEmpty ? widget.subjects.first.code : '';
-    _selectedType = _types.first;
-    _selectedDay = widget.selectedDayLabel;
+    _date = widget.initialDate;
+    _subjectId = widget.subjects.isEmpty ? null : widget.subjects.first.id;
   }
 
   @override
   void dispose() {
-    _titleCtrl.dispose();
-    _noteCtrl.dispose();
+    _titleController.dispose();
+    _noteController.dispose();
     super.dispose();
   }
 
-  Future<void> _pickTime({required bool isStart}) async {
-    final initial = isStart ? _startTime : _endTime;
-    final picked = await showTimePicker(
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
       context: context,
-      initialTime: initial,
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          colorScheme: ColorScheme.fromSeed(seedColor: AppColors.purple),
-        ),
-        child: child!,
-      ),
+      initialDate: _date,
+      firstDate: _dateOnly(DateTime.now()),
+      lastDate: DateTime.now().add(const Duration(days: 730)),
     );
-    if (picked != null) {
-      setState(() {
-        if (isStart) {
-          _startTime = picked;
-          if (_endTime.hour < _startTime.hour || (_endTime.hour == _startTime.hour && _endTime.minute <= _startTime.minute)) {
-            _endTime = TimeOfDay(hour: picked.hour + 1, minute: picked.minute);
-          }
-        } else {
-          _endTime = picked;
-        }
-      });
-    }
+    if (picked != null && mounted) setState(() => _date = _dateOnly(picked));
   }
 
-  void _submit() {
-    if (!_formKey.currentState!.validate()) return;
-    final subject = widget.subjects.firstWhere(
-      (s) => s.code == _selectedSubjectCode,
-      orElse: () => widget.subjects.first,
+  Future<void> _pickTime(bool start) async {
+    final current = start ? _startMinute : _endMinute;
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _toTimeOfDay(current),
     );
-    final id = DateTime.now().millisecondsSinceEpoch.toString();
-    final block = StudyBlock(
-      id: 'b_$id',
-      title: _titleCtrl.text.trim(),
-      subjectName: subject.name,
-      subjectCode: subject.code,
-      startTime: _startTime,
-      endTime: _endTime,
-      type: _selectedType,
-      note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
-      accent: subject.color,
-      dayLabel: _selectedDay,
+    if (picked == null || !mounted) return;
+    setState(() {
+      final value = picked.hour * 60 + picked.minute;
+      if (start) {
+        _startMinute = value;
+        if (_endMinute <= value) {
+          _endMinute = (value + 60).clamp(0, 24 * 60 - 1).toInt();
+        }
+      } else {
+        _endMinute = value;
+      }
+      _timeError = _endMinute - _startMinute < 5
+          ? 'End time must be at least 5 minutes after start.'
+          : null;
+    });
+  }
+
+  Future<void> _save() async {
+    FocusScope.of(context).unfocus();
+    setState(
+      () => _timeError = _endMinute - _startMinute < 5
+          ? 'End time must be at least 5 minutes after start.'
+          : null,
     );
-    widget.onAdd(block);
+    if (!_formKey.currentState!.validate() || _timeError != null || _saving) {
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final task = await widget.repository.createTask(
+        StudyBlockDraft(
+          title: _titleController.text.trim(),
+          date: _date,
+          startMinute: _startMinute,
+          endMinute: _endMinute,
+          type: _type,
+          subjectId: _subjectId,
+          note: _optionalString(_noteController.text),
+        ),
+      );
+      if (mounted) Navigator.pop(context, task);
+    } on PlannerConflictException catch (error) {
+      if (mounted) setState(() => _timeError = error.message);
+    } on PlannerReadOnlyException catch (error) {
+      if (mounted) setState(() => _timeError = error.message);
+    } on FormatException catch (error) {
+      if (mounted) setState(() => _timeError = error.message);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not save the task. Please try again.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final bottom = MediaQuery.viewInsetsOf(context).bottom;
     return Container(
-      margin: const EdgeInsets.only(top: 60),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.92,
+      ),
       decoration: const BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -1357,119 +1504,193 @@ class _AddTaskSheetState extends State<_AddTaskSheet> {
       child: Form(
         key: _formKey,
         child: ListView(
-          padding: EdgeInsets.fromLTRB(24, 16, 24, 24 + bottom),
-          shrinkWrap: true,
+          padding: EdgeInsets.fromLTRB(22, 14, 22, 24 + bottom),
           children: [
-            // Handle
             Center(
               child: Container(
-                width: 40,
+                width: 42,
                 height: 5,
                 decoration: BoxDecoration(
                   color: AppColors.border,
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(99),
                 ),
               ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Add study task',
+                    style: TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Add study task',
-              style: TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 20),
-            // Title
             TextFormField(
-              controller: _titleCtrl,
+              controller: _titleController,
+              autofocus: true,
+              maxLength: 80,
+              textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
                 labelText: 'Task title',
-                hintText: 'e.g. Database revision',
-                prefixIcon: Icon(Icons.assignment_outlined, size: 20),
+                hintText: 'What do you want to accomplish?',
+                prefixIcon: Icon(Icons.task_alt_rounded),
               ),
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter a title' : null,
+              validator: (value) {
+                final text = value?.trim() ?? '';
+                if (text.isEmpty) return 'Enter a task title.';
+                if (text.length < 3) return 'Use at least 3 characters.';
+                return null;
+              },
+            ),
+            const SizedBox(height: 10),
+            InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: _pickDate,
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Date',
+                  prefixIcon: Icon(Icons.calendar_today_rounded),
+                ),
+                child: Text(
+                  '${_weekdayLong(_date.weekday)}, ${_monthLong(_date.month)} ${_date.day}, ${_date.year}',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
             ),
             const SizedBox(height: 14),
-            // Row: Day + Type
             Row(
               children: [
                 Expanded(
-                  child: _DropdownField(
-                    label: 'Day',
-                    value: _selectedDay,
-                    items: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-                    onChanged: (v) => setState(() => _selectedDay = v!),
+                  child: _TimeField(
+                    label: 'Starts',
+                    minute: _startMinute,
+                    onTap: () => _pickTime(true),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
-                  child: _DropdownField(
-                    label: 'Type',
-                    value: _selectedType,
-                    items: _types,
-                    onChanged: (v) => setState(() => _selectedType = v!),
+                  child: _TimeField(
+                    label: 'Ends',
+                    minute: _endMinute,
+                    onTap: () => _pickTime(false),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 14),
-            // Subject
-            _DropdownField(
-              label: 'Subject',
-              value: _selectedSubjectCode,
-              items: widget.subjects.map((s) => s.code).toList(),
-              displayMap: {for (final s in widget.subjects) s.code: '${s.code} - ${s.name}'},
-              onChanged: (v) => setState(() => _selectedSubjectCode = v!),
-            ),
-            const SizedBox(height: 14),
-            // Time row
-            Row(
-              children: [
-                Expanded(
-                  child: _TimePickerField(
-                    label: 'Start',
-                    time: _startTime,
-                    onTap: () => _pickTime(isStart: true),
+            if (_timeError != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 7, left: 12),
+                child: Text(
+                  _timeError!,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFFB91C1C),
                   ),
                 ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8),
-                  child: Icon(Icons.arrow_forward_rounded, color: AppColors.textSecondary, size: 18),
-                ),
-                Expanded(
-                  child: _TimePickerField(
-                    label: 'End',
-                    time: _endTime,
-                    onTap: () => _pickTime(isStart: false),
-                  ),
-                ),
-              ],
-            ),
+              ),
             const SizedBox(height: 14),
-            // Note
-            TextFormField(
-              controller: _noteCtrl,
+            DropdownButtonFormField<PlannerTaskType>(
+              initialValue: _type,
+              isExpanded: true,
               decoration: const InputDecoration(
-                labelText: 'Note (optional)',
-                hintText: 'Add details or resources',
-                prefixIcon: Icon(Icons.notes_rounded, size: 20),
+                labelText: 'Task type',
+                prefixIcon: Icon(Icons.category_outlined),
               ),
-              maxLines: 2,
+              items: PlannerTaskType.values
+                  .map(
+                    (type) =>
+                        DropdownMenuItem(value: type, child: Text(type.label)),
+                  )
+                  .toList(),
+              onChanged: (value) => setState(() => _type = value ?? _type),
             ),
-            const SizedBox(height: 20),
-            SizedBox(
-              height: 54,
-              child: ElevatedButton(
-                onPressed: _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.purple,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            const SizedBox(height: 14),
+            DropdownButtonFormField<String?>(
+              initialValue: _subjectId,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Course',
+                prefixIcon: Icon(Icons.school_outlined),
+              ),
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('General / no course'),
                 ),
-                child: const Text('Add to planner', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                ...widget.subjects.map(
+                  (subject) => DropdownMenuItem<String?>(
+                    value: subject.id,
+                    child: Text(
+                      '${subject.code} — ${subject.name}',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ],
+              selectedItemBuilder: (context) => [
+                const Text(
+                  'General / no course',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                ...widget.subjects.map(
+                  (subject) => Text(
+                    '${subject.code} — ${subject.name}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+              onChanged: (value) => setState(() => _subjectId = value),
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _noteController,
+              maxLength: 300,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Notes (optional)',
+                hintText: 'Resources, goals, or reminders',
+                alignLabelWithHint: true,
+                prefixIcon: Padding(
+                  padding: EdgeInsets.only(bottom: 44),
+                  child: Icon(Icons.notes_rounded),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            FilledButton.icon(
+              onPressed: _saving ? null : _save,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.add_task_rounded),
+              label: Text(_saving ? 'Adding task…' : 'Add to planner'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.purple,
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(54),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
               ),
             ),
           ],
@@ -1479,209 +1700,670 @@ class _AddTaskSheetState extends State<_AddTaskSheet> {
   }
 }
 
-// =============================================================================
-// DROPDOWN FIELD (reusable for bottom sheet)
-// =============================================================================
+enum _TaskAction { toggle, delete }
 
-class _DropdownField extends StatelessWidget {
-  final String label;
-  final String value;
-  final List<String> items;
-  final Map<String, String>? displayMap;
-  final ValueChanged<String?> onChanged;
-
-  const _DropdownField({
-    required this.label,
-    required this.value,
-    required this.items,
-    this.displayMap,
-    required this.onChanged,
+class _TaskDetailSheet extends StatelessWidget {
+  const _TaskDetailSheet({
+    required this.task,
+    required this.color,
+    required this.readOnly,
   });
-
-  @override
-  Widget build(BuildContext context) {
-    return InputDecorator(
-      decoration: InputDecoration(
-        labelText: label,
-        contentPadding: const EdgeInsets.symmetric(vertical: 6, horizontal: 14),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.border)),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.border)),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          isDense: true,
-          isExpanded: true,
-          style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
-          underline: const SizedBox.shrink(),
-          items: items.map((item) {
-            final display = displayMap?[item] ?? item;
-            return DropdownMenuItem(value: item, child: Text(display, style: const TextStyle(fontSize: 14)));
-          }).toList(),
-          onChanged: onChanged,
-        ),
-      ),
-    );
-  }
-}
-
-// =============================================================================
-// TIME PICKER FIELD
-// =============================================================================
-
-class _TimePickerField extends StatelessWidget {
-  final String label;
-  final TimeOfDay time;
-  final VoidCallback onTap;
-
-  const _TimePickerField({required this.label, required this.time, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    String pad(int n) => n.toString().padLeft(2, '0');
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        decoration: BoxDecoration(
-          color: AppColors.inputFill,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 4),
-            Text(
-              '${pad(time.hour)}:${pad(time.minute)}',
-              style: const TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w700),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// =============================================================================
-// BLOCK DETAIL BOTTOM SHEET
-// =============================================================================
-
-class _BlockDetailSheet extends StatelessWidget {
-  final StudyBlock block;
-  final VoidCallback onToggle;
-  final VoidCallback onDelete;
-
-  const _BlockDetailSheet({required this.block, required this.onToggle, required this.onDelete});
+  final StudyBlock task;
+  final Color color;
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(top: 60),
+      padding: const EdgeInsets.fromLTRB(22, 14, 22, 24),
       decoration: const BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(width: 40, height: 5, decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(999))),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 42,
+              height: 5,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(99),
+              ),
             ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Container(
-                  width: 14,
-                  height: 14,
-                  decoration: BoxDecoration(color: block.accent, shape: BoxShape.circle),
-                ),
-                const SizedBox(width: 10),
-                _Tag(label: block.type, color: block.accent),
-                const SizedBox(width: 8),
-                _Tag(label: block.subjectName, color: const Color(0xFF64748B)),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Text(
-              block.title,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
-            ),
-            if (block.note != null && block.note!.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(block.note!, style: const TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.4)),
+          ),
+          const SizedBox(height: 20),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _Pill(text: task.type.label, color: color),
+              if (task.subjectCode != null)
+                _Pill(text: task.subjectCode!, color: const Color(0xFF475569)),
             ],
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Icon(Icons.schedule_rounded, size: 16, color: AppColors.textSecondary),
-                const SizedBox(width: 6),
-                Text(
-                  '${block.startTime.format(context)} - ${block.endTime.format(context)}',
-                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: block.isCompleted ? const Color(0xFF10B981).withValues(alpha: 0.1) : AppColors.border.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    block.isCompleted ? 'Done' : 'Pending',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: block.isCompleted ? const Color(0xFF10B981) : AppColors.textSecondary,
-                    ),
-                  ),
-                ),
-              ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            task.title,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: task.completed
+                  ? AppColors.textSecondary
+                  : AppColors.textPrimary,
+              decoration: task.completed ? TextDecoration.lineThrough : null,
             ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 50,
-                    child: OutlinedButton.icon(
-                      onPressed: onDelete,
-                      icon: const Icon(Icons.delete_outline_rounded, size: 18),
-                      label: const Text('Delete'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFFDC2626),
-                        side: BorderSide(color: Color(0xFFDC2626).withValues(alpha: 0.3)),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: SizedBox(
-                    height: 50,
-                    child: ElevatedButton.icon(
-                      onPressed: onToggle,
-                      icon: Icon(block.isCompleted ? Icons.undo_rounded : Icons.check_rounded, size: 18),
-                      label: Text(block.isCompleted ? 'Mark pending' : 'Mark done'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: block.isCompleted ? AppColors.border : const Color(0xFF10B981),
-                        foregroundColor: block.isCompleted ? AppColors.textPrimary : Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+          ),
+          const SizedBox(height: 12),
+          _DetailLine(
+            icon: Icons.calendar_today_rounded,
+            text:
+                '${_weekdayLong(task.date.weekday)}, ${_monthLong(task.date.month)} ${task.date.day}',
+          ),
+          const SizedBox(height: 9),
+          _DetailLine(
+            icon: Icons.schedule_rounded,
+            text:
+                '${_formatMinute(context, task.startMinute)} – ${_formatMinute(context, task.endMinute)} · ${_durationLabel(task.durationMinutes)}',
+          ),
+          if (task.subjectName != null) ...[
+            const SizedBox(height: 9),
+            _DetailLine(icon: Icons.school_outlined, text: task.subjectName!),
+          ],
+          if (task.note != null) ...[
+            const SizedBox(height: 16),
+            Text(
+              task.note!,
+              style: const TextStyle(
+                fontSize: 13.5,
+                height: 1.45,
+                color: AppColors.textSecondary,
+              ),
             ),
           ],
+          if (readOnly) ...[
+            const SizedBox(height: 18),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.inputFill,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.lock_outline_rounded, size: 18),
+                  SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      'This date has passed. The task is kept as history and cannot be changed.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 24),
+          if (!readOnly)
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.pop(context, _TaskAction.delete),
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    label: const Text('Delete'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFDC2626),
+                      side: const BorderSide(color: Color(0xFFFCA5A5)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => Navigator.pop(context, _TaskAction.toggle),
+                    icon: Icon(
+                      task.completed ? Icons.undo_rounded : Icons.check_rounded,
+                    ),
+                    label: Text(task.completed ? 'Mark pending' : 'Mark done'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: task.completed
+                          ? AppColors.textSecondary
+                          : const Color(0xFF059669),
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TaskCard extends StatelessWidget {
+  const _TaskCard({
+    required this.task,
+    required this.color,
+    required this.onToggle,
+    required this.onTap,
+    required this.onDelete,
+    required this.readOnly,
+  });
+  final StudyBlock task;
+  final Color color;
+  final VoidCallback onToggle;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+  final bool readOnly;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.card,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: AppColors.border),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 13, 14, 13),
+          child: Row(
+            children: [
+              Container(
+                width: 4,
+                height: 58,
+                decoration: BoxDecoration(
+                  color: task.completed ? AppColors.border : color,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+              const SizedBox(width: 11),
+              Semantics(
+                button: true,
+                label: task.completed
+                    ? 'Mark ${task.title} pending'
+                    : 'Mark ${task.title} complete',
+                child: Checkbox(
+                  value: task.completed,
+                  onChanged: readOnly ? null : (_) => onToggle(),
+                  activeColor: const Color(0xFF059669),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      task.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: task.completed
+                            ? AppColors.textSecondary
+                            : AppColors.textPrimary,
+                        decoration: task.completed
+                            ? TextDecoration.lineThrough
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.schedule_rounded,
+                          size: 14,
+                          color: AppColors.textSecondary,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            '${_formatMinute(context, task.startMinute)} – ${_formatMinute(context, task.endMinute)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ),
+                        if (task.subjectCode != null) const SizedBox(width: 6),
+                        if (task.subjectCode != null)
+                          _Pill(text: task.subjectCode!, color: color),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: readOnly ? 'Past tasks are read-only' : 'Delete task',
+                onPressed: readOnly ? null : onDelete,
+                icon: Icon(
+                  readOnly
+                      ? Icons.lock_outline_rounded
+                      : Icons.delete_outline_rounded,
+                  color: readOnly
+                      ? AppColors.textSecondary
+                      : const Color(0xFFDC2626),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _Metric extends StatelessWidget {
+  const _Metric({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            maxLines: 1,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 9.5,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimeField extends StatelessWidget {
+  const _TimeField({
+    required this.label,
+    required this.minute,
+    required this.onTap,
+  });
+  final String label;
+  final int minute;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: const Icon(Icons.schedule_rounded),
+        ),
+        child: Text(
+          _formatMinute(context, minute),
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  const _Pill({required this.text, required this.color});
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailLine extends StatelessWidget {
+  const _DetailLine({required this.icon, required this.text});
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Icon(icon, size: 17, color: AppColors.textSecondary),
+      const SizedBox(width: 8),
+      Expanded(
+        child: Text(
+          text,
+          style: const TextStyle(
+            fontSize: 13,
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle({required this.title});
+  final String title;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Container(
+        width: 4,
+        height: 17,
+        decoration: BoxDecoration(
+          color: AppColors.purple,
+          borderRadius: BorderRadius.circular(9),
+        ),
+      ),
+      const SizedBox(width: 8),
+      Expanded(
+        child: Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: AppColors.textPrimary,
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
+class _SurfaceCard extends StatelessWidget {
+  const _SurfaceCard({required this.child, required this.padding});
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: padding,
+    decoration: BoxDecoration(
+      color: AppColors.card,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: AppColors.border),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x0A0F172A),
+          blurRadius: 12,
+          offset: Offset(0, 5),
+        ),
+      ],
+    ),
+    child: child,
+  );
+}
+
+class _PlannerLoadingView extends StatelessWidget {
+  const _PlannerLoadingView();
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    physics: const AlwaysScrollableScrollPhysics(),
+    padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+    children: [
+      Row(
+        children: [
+          Expanded(child: _placeholder(170, 28)),
+          const SizedBox(width: 50),
+          _placeholder(104, 46),
+        ],
+      ),
+      const SizedBox(height: 22),
+      _placeholder(double.infinity, 66),
+      const SizedBox(height: 14),
+      _placeholder(double.infinity, 76),
+      const SizedBox(height: 20),
+      _placeholder(double.infinity, 190),
+      const SizedBox(height: 24),
+      _placeholder(130, 22),
+      const SizedBox(height: 12),
+      _placeholder(double.infinity, 90),
+      const SizedBox(height: 10),
+      _placeholder(double.infinity, 90),
+    ],
+  );
+
+  static Widget _placeholder(double width, double height) => Container(
+    width: width,
+    height: height,
+    decoration: BoxDecoration(
+      color: AppColors.border.withValues(alpha: 0.45),
+      borderRadius: BorderRadius.circular(18),
+    ),
+  );
+}
+
+class _PlannerErrorView extends StatelessWidget {
+  const _PlannerErrorView({required this.message, required this.onRetry});
+  final String message;
+  final Future<void> Function({bool showLoader}) onRetry;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    physics: const AlwaysScrollableScrollPhysics(),
+    padding: const EdgeInsets.all(32),
+    children: [
+      const SizedBox(height: 120),
+      const Icon(
+        Icons.cloud_off_rounded,
+        size: 54,
+        color: AppColors.textSecondary,
+      ),
+      const SizedBox(height: 16),
+      const Text(
+        'Planner unavailable',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 19,
+          fontWeight: FontWeight.w800,
+          color: AppColors.textPrimary,
+        ),
+      ),
+      const SizedBox(height: 8),
+      Text(
+        message,
+        textAlign: TextAlign.center,
+        style: const TextStyle(color: AppColors.textSecondary, height: 1.4),
+      ),
+      const SizedBox(height: 20),
+      Center(
+        child: FilledButton.icon(
+          onPressed: onRetry,
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('Try again'),
+        ),
+      ),
+    ],
+  );
+}
+
+DateTime _dateOnly(DateTime date) => DateTime(date.year, date.month, date.day);
+
+DateTime _startOfWeek(DateTime date) =>
+    _dateOnly(date).subtract(Duration(days: date.weekday - 1));
+
+bool _sameDate(DateTime a, DateTime b) =>
+    a.year == b.year && a.month == b.month && a.day == b.day;
+
+bool _isInWeek(DateTime date, DateTime start) =>
+    !date.isBefore(start) && date.isBefore(start.add(const Duration(days: 7)));
+
+int _sortTasks(StudyBlock a, StudyBlock b) {
+  final date = a.date.compareTo(b.date);
+  return date != 0 ? date : a.startMinute.compareTo(b.startMinute);
+}
+
+String _requiredString(Map<String, dynamic> json, String key) {
+  final value = _optionalString(json[key]);
+  if (value == null) throw FormatException('Missing or invalid $key');
+  return value;
+}
+
+String? _optionalString(Object? value) {
+  if (value is! String || value.trim().isEmpty) return null;
+  return value.trim();
+}
+
+int? _asInt(Object? value) =>
+    value is int ? value : int.tryParse(value?.toString() ?? '');
+
+int _parseClock(String value) {
+  final match = RegExp(r'^(\d{2}):(\d{2})(?::\d{2})?$').firstMatch(value);
+  if (match == null) throw const FormatException('Invalid time format');
+  final hour = int.parse(match.group(1)!);
+  final minute = int.parse(match.group(2)!);
+  if (hour > 23 || minute > 59) {
+    throw const FormatException('Invalid clock time');
+  }
+  return hour * 60 + minute;
+}
+
+String _apiDate(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+String _apiTime(int minute) =>
+    '${(minute ~/ 60).toString().padLeft(2, '0')}:${(minute % 60).toString().padLeft(2, '0')}';
+
+TimeOfDay _toTimeOfDay(int minute) =>
+    TimeOfDay(hour: minute ~/ 60, minute: minute % 60);
+
+String _formatMinute(BuildContext context, int minute) =>
+    _toTimeOfDay(minute).format(context);
+
+String _durationLabel(int minutes) {
+  if (minutes <= 0) return '0m';
+  final hours = minutes ~/ 60;
+  final remaining = minutes % 60;
+  if (hours == 0) return '${remaining}m';
+  if (remaining == 0) return '${hours}h';
+  return '${hours}h ${remaining}m';
+}
+
+String _weekdayShort(int weekday) =>
+    const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][weekday - 1];
+
+String _weekdayLong(int weekday) => const [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+][weekday - 1];
+
+String _monthShort(int month) => const [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+][month - 1];
+
+String _monthLong(int month) => const [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+][month - 1];
+
+String _weekRange(DateTime start, DateTime end) {
+  if (start.year != end.year) {
+    return '${_monthShort(start.month)} ${start.day}, ${start.year} – ${_monthShort(end.month)} ${end.day}, ${end.year}';
+  }
+  if (start.month != end.month) {
+    return '${_monthShort(start.month)} ${start.day} – ${_monthShort(end.month)} ${end.day}, ${end.year}';
+  }
+  return '${_monthShort(start.month)} ${start.day} – ${end.day}, ${end.year}';
+}
+
+int _isoWeekNumber(DateTime date) {
+  final thursday = _dateOnly(date).add(Duration(days: 4 - date.weekday));
+  final firstThursday = DateTime(thursday.year, 1, 4);
+  return 1 +
+      (thursday
+              .difference(
+                firstThursday.subtract(
+                  Duration(days: firstThursday.weekday - 4),
+                ),
+              )
+              .inDays ~/
+          7);
 }
