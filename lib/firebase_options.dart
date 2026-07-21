@@ -3,6 +3,7 @@
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
+import 'package:flutter_dotenv/flutter_dotenv.dart' show dotenv;
 
 /// Default [FirebaseOptions] for use with your Firebase apps.
 ///
@@ -49,20 +50,28 @@ class DefaultFirebaseOptions {
     }
   }
 
-  static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyDWRXor0Ty7-RFXITkp90MHmmfxitDW_m8',
-    appId: '1:691517478489:android:d5155016744fe83b198348',
-    messagingSenderId: '691517478489',
-    projectId: 'campustwin-2a63e',
-    storageBucket: 'campustwin-2a63e.firebasestorage.app',
+  static FirebaseOptions get android => FirebaseOptions(
+    apiKey: _requiredEnv('FIREBASE_ANDROID_API_KEY'),
+    appId: _requiredEnv('FIREBASE_ANDROID_APP_ID'),
+    messagingSenderId: _requiredEnv('FIREBASE_MESSAGING_SENDER_ID'),
+    projectId: _requiredEnv('FIREBASE_PROJECT_ID'),
+    storageBucket: _requiredEnv('FIREBASE_STORAGE_BUCKET'),
   );
 
-  static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyDni5vbnsbJ_73FmV7gc22ygX56j6AfOg8',
-    appId: '1:691517478489:ios:a56926c44b640056198348',
-    messagingSenderId: '691517478489',
-    projectId: 'campustwin-2a63e',
-    storageBucket: 'campustwin-2a63e.firebasestorage.app',
-    iosBundleId: 'com.example.campusTwin',
+  static FirebaseOptions get ios => FirebaseOptions(
+    apiKey: _requiredEnv('FIREBASE_IOS_API_KEY'),
+    appId: _requiredEnv('FIREBASE_IOS_APP_ID'),
+    messagingSenderId: _requiredEnv('FIREBASE_MESSAGING_SENDER_ID'),
+    projectId: _requiredEnv('FIREBASE_PROJECT_ID'),
+    storageBucket: _requiredEnv('FIREBASE_STORAGE_BUCKET'),
+    iosBundleId: _requiredEnv('FIREBASE_IOS_BUNDLE_ID'),
   );
+}
+
+String _requiredEnv(String key) {
+  final value = dotenv.env[key];
+  if (value == null || value.isEmpty) {
+    throw StateError('Missing required Firebase config value: $key');
+  }
+  return value;
 }
