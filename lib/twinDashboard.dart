@@ -6,6 +6,7 @@ import 'package:campus_twin/welcome_page.dart';
 import 'package:campus_twin/assistant.dart';
 import 'package:campus_twin/budget_page.dart';
 import 'package:campus_twin/app_blocker_page.dart';
+import 'package:campus_twin/leaderboard_page.dart';
 
 // =============================================================================
 // DATA MODELS
@@ -25,9 +26,14 @@ class UserProfile {
   final List<String> enrolledCourses;
 
   const UserProfile({
-    required this.id, required this.name, required this.nickname, required this.email,
-    required this.department, required this.semester,
-    this.session = '2022-2026', this.phone = '+880 1XXX-XXXXXX',
+    required this.id,
+    required this.name,
+    required this.nickname,
+    required this.email,
+    required this.department,
+    required this.semester,
+    this.session = '2022-2026',
+    this.phone = '+880 1XXX-XXXXXX',
     this.enrolledCourses = const [],
   });
 }
@@ -41,12 +47,22 @@ class ScheduleItem {
   final String? location;
   final bool isCompleted;
   const ScheduleItem({
-    required this.id, required this.title, required this.time, required this.endTime,
-    required this.type, this.location, this.isCompleted = false,
+    required this.id,
+    required this.title,
+    required this.time,
+    required this.endTime,
+    required this.type,
+    this.location,
+    this.isCompleted = false,
   });
   ScheduleItem copyWith({bool? isCompleted}) => ScheduleItem(
-    id: id, title: title, time: time, endTime: endTime, type: type,
-    location: location, isCompleted: isCompleted ?? this.isCompleted,
+    id: id,
+    title: title,
+    time: time,
+    endTime: endTime,
+    type: type,
+    location: location,
+    isCompleted: isCompleted ?? this.isCompleted,
   );
 }
 
@@ -57,8 +73,11 @@ class DeadlineItem {
   final DateTime dueDate;
   final String? courseCode;
   const DeadlineItem({
-    required this.id, required this.title, required this.course,
-    required this.dueDate, this.courseCode,
+    required this.id,
+    required this.title,
+    required this.course,
+    required this.dueDate,
+    this.courseCode,
   });
   int get daysLeft => dueDate.difference(DateTime.now()).inDays;
   bool get isUrgent => daysLeft <= 2;
@@ -90,11 +109,22 @@ class _DashboardRepository {
   // TODO: GET /profile/{userId}  →  UserProfile
   //       enrolledCourses drives what the Planner tab displays.
   static UserProfile get profile => const UserProfile(
-    id: 'u1', name: 'Abu Salah Md. Jamil', nickname: 'Jamil',
+    id: 'u1',
+    name: 'Abu Salah Md. Jamil',
+    nickname: 'Jamil',
     email: 'jamil@student.campustwin.edu',
-    department: 'Computer Science & Engineering', semester: '6th Semester',
-    session: '2022-2026', phone: '+880 1700-000001',
-    enrolledCourses: ['CSE301', 'CSE302', 'CSE303', 'CSE402', 'CSE501', 'INT401'],
+    department: 'Computer Science & Engineering',
+    semester: '6th Semester',
+    session: '2022-2026',
+    phone: '+880 1700-000001',
+    enrolledCourses: [
+      'CSE301',
+      'CSE302',
+      'CSE303',
+      'CSE402',
+      'CSE501',
+      'INT401',
+    ],
   );
 
   // ── Home tab ─────────────────────────────────────────────────────────
@@ -113,8 +143,11 @@ class _DashboardRepository {
     if (weeklyHours.isNotEmpty) return;
     weeklyHours = [4, 6, 5, 3, 7, 2, 0];
     subjectDistribution = {
-      'CSE301': 0.30, 'CSE402': 0.20, 'CSE501': 0.15,
-      'CSE303': 0.25, 'CSE302': 0.10,
+      'CSE301': 0.30,
+      'CSE402': 0.20,
+      'CSE501': 0.15,
+      'CSE303': 0.25,
+      'CSE302': 0.10,
     };
   }
 
@@ -122,19 +155,69 @@ class _DashboardRepository {
     _initCharts();
     if (schedule.isEmpty) {
       schedule = [
-        const ScheduleItem(id: 's1', title: 'Database Systems Lecture', time: TimeOfDay(hour: 9, minute: 0), endTime: TimeOfDay(hour: 10, minute: 30), type: 'Class', location: 'Room 401'),
-        const ScheduleItem(id: 's2', title: 'Data Mining Study Block', time: TimeOfDay(hour: 11, minute: 30), endTime: TimeOfDay(hour: 13, minute: 0), type: 'Study Block'),
-        const ScheduleItem(id: 's3', title: 'Software Engineering Lab', time: TimeOfDay(hour: 14, minute: 0), endTime: TimeOfDay(hour: 15, minute: 30), type: 'Lab', location: 'Lab 3'),
-        const ScheduleItem(id: 's4', title: 'ML Assignment Work', time: TimeOfDay(hour: 17, minute: 0), endTime: TimeOfDay(hour: 18, minute: 30), type: 'Study Block'),
+        const ScheduleItem(
+          id: 's1',
+          title: 'Database Systems Lecture',
+          time: TimeOfDay(hour: 9, minute: 0),
+          endTime: TimeOfDay(hour: 10, minute: 30),
+          type: 'Class',
+          location: 'Room 401',
+        ),
+        const ScheduleItem(
+          id: 's2',
+          title: 'Data Mining Study Block',
+          time: TimeOfDay(hour: 11, minute: 30),
+          endTime: TimeOfDay(hour: 13, minute: 0),
+          type: 'Study Block',
+        ),
+        const ScheduleItem(
+          id: 's3',
+          title: 'Software Engineering Lab',
+          time: TimeOfDay(hour: 14, minute: 0),
+          endTime: TimeOfDay(hour: 15, minute: 30),
+          type: 'Lab',
+          location: 'Lab 3',
+        ),
+        const ScheduleItem(
+          id: 's4',
+          title: 'ML Assignment Work',
+          time: TimeOfDay(hour: 17, minute: 0),
+          endTime: TimeOfDay(hour: 18, minute: 30),
+          type: 'Study Block',
+        ),
       ];
     }
     if (deadlines.isEmpty) {
       final now = DateTime.now();
       deadlines = [
-        DeadlineItem(id: 'd1', title: 'ML Assignment 02', course: 'Machine Learning', dueDate: now.add(const Duration(days: 1)), courseCode: 'CSE501'),
-        DeadlineItem(id: 'd2', title: 'SDP Progress Report', course: 'Software Engineering', dueDate: now.add(const Duration(days: 3)), courseCode: 'CSE303'),
-        DeadlineItem(id: 'd3', title: 'ISO 27001 Audit Draft', course: 'Internship', dueDate: now.add(const Duration(days: 6)), courseCode: 'INT401'),
-        DeadlineItem(id: 'd4', title: 'Data Mining Quiz', course: 'Data Mining', dueDate: now.add(const Duration(days: 4)), courseCode: 'CSE402'),
+        DeadlineItem(
+          id: 'd1',
+          title: 'ML Assignment 02',
+          course: 'Machine Learning',
+          dueDate: now.add(const Duration(days: 1)),
+          courseCode: 'CSE501',
+        ),
+        DeadlineItem(
+          id: 'd2',
+          title: 'SDP Progress Report',
+          course: 'Software Engineering',
+          dueDate: now.add(const Duration(days: 3)),
+          courseCode: 'CSE303',
+        ),
+        DeadlineItem(
+          id: 'd3',
+          title: 'ISO 27001 Audit Draft',
+          course: 'Internship',
+          dueDate: now.add(const Duration(days: 6)),
+          courseCode: 'INT401',
+        ),
+        DeadlineItem(
+          id: 'd4',
+          title: 'Data Mining Quiz',
+          course: 'Data Mining',
+          dueDate: now.add(const Duration(days: 4)),
+          courseCode: 'CSE402',
+        ),
       ]..sort((a, b) => a.daysLeft.compareTo(b.daysLeft));
     }
   }
@@ -167,7 +250,8 @@ class DashboardPage extends StatefulWidget {
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage> with SingleTickerProviderStateMixin {
+class _DashboardPageState extends State<DashboardPage>
+    with SingleTickerProviderStateMixin {
   bool _isLoading = true;
   late int _selectedTabIndex;
   late final AnimationController _borderAnimController;
@@ -175,8 +259,11 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    _selectedTabIndex = widget.initialTabIndex.clamp(0, 4);
-    _borderAnimController = AnimationController(vsync: this, duration: const Duration(seconds: 4))..repeat();
+    _selectedTabIndex = widget.initialTabIndex.clamp(0, 5);
+    _borderAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
+    )..repeat();
     _loadData();
   }
 
@@ -193,9 +280,9 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
   }
 
   void _openHabitTracker() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const HabitTrackerPage()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const HabitTrackerPage()));
   }
 
   void _showProfile() {
@@ -231,9 +318,13 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
         },
         onOpenAppBlocker: () {
           Navigator.of(context).pop();
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const AppBlockerPage()),
-          );
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const AppBlockerPage()));
+        },
+        onNavigateToLeaderboard: () {
+          Navigator.of(context).pop();
+          setState(() => _selectedTabIndex = 4);
         },
       ),
     );
@@ -241,16 +332,54 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
 
   // ── Tab items ────────────────────────────────────────────────────────
   static const _tabs = [
-    _TabItem(label: 'Home', icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard_rounded),
-    _TabItem(label: 'Planner', icon: Icons.edit_calendar_outlined, activeIcon: Icons.edit_calendar_rounded),
-    _TabItem(label: 'Habits', icon: Icons.local_fire_department_outlined, activeIcon: Icons.local_fire_department_rounded),
-    _TabItem(label: 'Budget', icon: Icons.account_balance_wallet_outlined, activeIcon: Icons.account_balance_wallet_rounded),
-    _TabItem(label: 'Assistant', icon: Icons.smart_toy_outlined, activeIcon: Icons.smart_toy_rounded),
+    _TabItem(
+      label: 'Home',
+      icon: Icons.dashboard_outlined,
+      activeIcon: Icons.dashboard_rounded,
+    ),
+    _TabItem(
+      label: 'Planner',
+      icon: Icons.edit_calendar_outlined,
+      activeIcon: Icons.edit_calendar_rounded,
+    ),
+    _TabItem(
+      label: 'Habits',
+      icon: Icons.local_fire_department_outlined,
+      activeIcon: Icons.local_fire_department_rounded,
+    ),
+    _TabItem(
+      label: 'Budget',
+      icon: Icons.account_balance_wallet_outlined,
+      activeIcon: Icons.account_balance_wallet_rounded,
+    ),
+    _TabItem(
+      label: 'Ranks',
+      icon: Icons.leaderboard_outlined,
+      activeIcon: Icons.leaderboard_rounded,
+    ),
+    _TabItem(
+      label: 'Assistant',
+      icon: Icons.smart_toy_outlined,
+      activeIcon: Icons.smart_toy_rounded,
+    ),
   ];
 
   // ── Helpers ──────────────────────────────────────────────────────────
   String _wd(int w) => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][w - 1];
-  String _mn(int m) => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1];
+  String _mn(int m) => [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ][m - 1];
 
   Color _stressColor(StressLevel l) => switch (l) {
     StressLevel.low => const Color(0xFF16A34A),
@@ -259,20 +388,42 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
   };
 
   String _stressLabel(StressLevel l) => switch (l) {
-    StressLevel.low => 'Low', StressLevel.medium => 'Medium', StressLevel.high => 'High',
+    StressLevel.low => 'Low',
+    StressLevel.medium => 'Medium',
+    StressLevel.high => 'High',
   };
 
   Widget _sectionTitle(String title, {String? trailing}) {
     return Row(
       children: [
-        Container(width: 4, height: 16, decoration: BoxDecoration(
-          color: const Color(0xFF2563EB), borderRadius: BorderRadius.circular(4))),
+        Container(
+          width: 4,
+          height: 16,
+          decoration: BoxDecoration(
+            color: const Color(0xFF2563EB),
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
         const SizedBox(width: 8),
-        Text(title, style: const TextStyle(
-          color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: -0.2)),
+        Text(
+          title,
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.2,
+          ),
+        ),
         if (trailing != null) ...[
           const Spacer(),
-          Text(trailing, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
+          Text(
+            trailing,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ],
       ],
     );
@@ -280,15 +431,26 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
 
   Widget _emptyCard(IconData icon, String msg) {
     return _GlowCard(
-      radius: 14, strokeWidth: 1.2,
+      radius: 14,
+      strokeWidth: 1.2,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 24),
         alignment: Alignment.center,
         child: Column(
           children: [
-            Icon(icon, size: 32, color: AppColors.textSecondary.withValues(alpha: 0.3)),
+            Icon(
+              icon,
+              size: 32,
+              color: AppColors.textSecondary.withValues(alpha: 0.3),
+            ),
             const SizedBox(height: 8),
-            Text(msg, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+            Text(
+              msg,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 13,
+              ),
+            ),
           ],
         ),
       ),
@@ -301,20 +463,23 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
     return Scaffold(
       extendBody: false,
       body: Container(
-        decoration: const BoxDecoration(gradient: LinearGradient(
-          colors: [Colors.white, Color(0xFFF6F9FF), Colors.white],
-          begin: Alignment.topCenter, end: Alignment.bottomCenter,
-        )),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.white, Color(0xFFF6F9FF), Colors.white],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: AppColors.purple))
+            ? const Center(
+                child: CircularProgressIndicator(color: AppColors.purple),
+              )
             : _buildCurrentTab(),
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: AppColors.card,
-          border: Border(
-            top: BorderSide(color: AppColors.border, width: 1),
-          ),
+          border: Border(top: BorderSide(color: AppColors.border, width: 1)),
           boxShadow: [
             BoxShadow(
               color: Color(0x0F0F172A),
@@ -354,11 +519,13 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                 setState(() => _selectedTabIndex = i);
               },
               destinations: _tabs
-                  .map((t) => NavigationDestination(
-                        icon: Icon(t.icon),
-                        selectedIcon: Icon(t.activeIcon, color: AppColors.purple),
-                        label: t.label,
-                      ))
+                  .map(
+                    (t) => NavigationDestination(
+                      icon: Icon(t.icon),
+                      selectedIcon: Icon(t.activeIcon, color: AppColors.purple),
+                      label: t.label,
+                    ),
+                  )
                   .toList(),
             ),
           ),
@@ -369,12 +536,20 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
 
   Widget _buildCurrentTab() {
     switch (_selectedTabIndex) {
-      case 0: return _buildHomeTab();
-      case 1: return const PlannerPage();
-      case 2: return _buildHabitsTab();
-      case 3: return const BudgetPage();
-      case 4: return const AssistantTab();
-      default: return const SizedBox.shrink();
+      case 0:
+        return _buildHomeTab();
+      case 1:
+        return const PlannerPage();
+      case 2:
+        return _buildHabitsTab();
+      case 3:
+        return const BudgetPage();
+      case 4:
+        return const LeaderboardPage();
+      case 5:
+        return const AssistantTab();
+      default:
+        return const SizedBox.shrink();
     }
   }
 
@@ -397,7 +572,11 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
             const SizedBox(height: 20),
             _buildVisualizationSection(),
             const SizedBox(height: 22),
-            _sectionTitle('Today\'s Schedule', trailing: '${_DashboardRepository.schedule.where((s) => s.isCompleted).length}/${_DashboardRepository.schedule.length}'),
+            _sectionTitle(
+              'Today\'s Schedule',
+              trailing:
+                  '${_DashboardRepository.schedule.where((s) => s.isCompleted).length}/${_DashboardRepository.schedule.length}',
+            ),
             const SizedBox(height: 10),
             _buildScheduleList(),
             const SizedBox(height: 22),
@@ -413,7 +592,11 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
   Widget _buildHeader() {
     final now = DateTime.now();
     final hour = now.hour;
-    final greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+    final greeting = hour < 12
+        ? 'Good morning'
+        : hour < 17
+        ? 'Good afternoon'
+        : 'Good evening';
     final p = _DashboardRepository.profile;
     final sc = _stressColor(_DashboardRepository.stressLevel);
     final sl = _stressLabel(_DashboardRepository.stressLevel);
@@ -430,34 +613,72 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                 children: [
                   Row(
                     children: [
-                      Text('$greeting,', style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                      Text(
+                        '$greeting,',
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 13,
+                        ),
+                      ),
                       const SizedBox(width: 6),
-                      Text(p.nickname,
-                        style: const TextStyle(color: AppColors.textPrimary, fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -0.3)),
+                      Text(
+                        p.nickname,
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      Icon(Icons.calendar_today_rounded, color: AppColors.textSecondary.withValues(alpha: 0.7), size: 11),
+                      Icon(
+                        Icons.calendar_today_rounded,
+                        color: AppColors.textSecondary.withValues(alpha: 0.7),
+                        size: 11,
+                      ),
                       const SizedBox(width: 4),
-                      Text('${_wd(now.weekday)}, ${_mn(now.month)} ${now.day}',
-                        style: TextStyle(color: AppColors.textSecondary.withValues(alpha: 0.7), fontSize: 11.5)),
+                      Text(
+                        '${_wd(now.weekday)}, ${_mn(now.month)} ${now.day}',
+                        style: TextStyle(
+                          color: AppColors.textSecondary.withValues(alpha: 0.7),
+                          fontSize: 11.5,
+                        ),
+                      ),
                       const SizedBox(width: 14),
                       GestureDetector(
-                        onTap: () { _DashboardRepository.cycleStress(); setState(() {}); },
+                        onTap: () {
+                          _DashboardRepository.cycleStress();
+                          setState(() {});
+                        },
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
                           decoration: BoxDecoration(
-                            color: sc.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: sc.withValues(alpha: 0.25)),
+                            color: sc.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: sc.withValues(alpha: 0.25),
+                            ),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(Icons.bolt_rounded, color: sc, size: 11),
                               const SizedBox(width: 2),
-                              Text(sl, style: TextStyle(color: sc, fontSize: 10, fontWeight: FontWeight.w700)),
+                              Text(
+                                sl,
+                                style: TextStyle(
+                                  color: sc,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -471,16 +692,32 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
             GestureDetector(
               onTap: _showProfile,
               child: Container(
-                width: 48, height: 48,
+                width: 48,
+                height: 48,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [AppColors.purple, Color(0xFF7C3AED)],
-                    begin: Alignment.topLeft, end: Alignment.bottomRight),
+                  gradient: const LinearGradient(
+                    colors: [AppColors.purple, Color(0xFF7C3AED)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [BoxShadow(color: AppColors.purple.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4))],
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.purple.withValues(alpha: 0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: Center(
-                  child: Text(p.name.split(' ').map((e) => e[0]).take(2).join(),
-                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                  child: Text(
+                    p.name.split(' ').map((e) => e[0]).take(2).join(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -493,26 +730,41 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
   Widget _buildQuickStats() {
     return Row(
       children: [
-        Expanded(child: _StatTile(
-          icon: Icons.event_available_outlined, label: 'Attendance',
-          value: '${_DashboardRepository.attendancePercent.toStringAsFixed(0)}%',
-          accent: AppColors.purple, onTap: () {},
-        )),
+        Expanded(
+          child: _StatTile(
+            icon: Icons.leaderboard_rounded,
+            label: 'Ranking',
+            value: '#1',
+            accent: const Color(0xFF6366F1),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const LeaderboardPage()),
+            ),
+          ),
+        ),
         const SizedBox(width: 10),
-        Expanded(child: _StatTile(
-          icon: Icons.local_fire_department_outlined, label: 'Streak',
-          value: '${_DashboardRepository.habitStreak} days',
-          accent: const Color(0xFF06B6D4), onTap: _openHabitTracker,
-        )),
+        Expanded(
+          child: _StatTile(
+            icon: Icons.local_fire_department_outlined,
+            label: 'Streak',
+            value: '${_DashboardRepository.habitStreak} days',
+            accent: const Color(0xFF06B6D4),
+            onTap: _openHabitTracker,
+          ),
+        ),
         const SizedBox(width: 10),
-        Expanded(child: _StatTile(
-          icon: Icons.account_balance_wallet_outlined, label: 'Budget Left',
-          value: '৳${_DashboardRepository.budgetRemaining.toStringAsFixed(0)}',
-          accent: const Color(0xFF10B981), onTap: () => setState(() => _selectedTabIndex = 3),
-        )),
+        Expanded(
+          child: _StatTile(
+            icon: Icons.account_balance_wallet_outlined,
+            label: 'Budget Left',
+            value: '৳${_DashboardRepository.budgetRemaining.toStringAsFixed(0)}',
+            accent: const Color(0xFF10B981),
+            onTap: () => setState(() => _selectedTabIndex = 3),
+          ),
+        ),
       ],
     );
   }
+
 
   // ── Visualization section: bar chart + donut chart ───────────────────
 
@@ -522,7 +774,13 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
     final totalH = hours.fold<double>(0, (s, h) => s + h);
     final labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     final dist = _DashboardRepository.subjectDistribution;
-    final distColors = [const Color(0xFF4F46E5), const Color(0xFF06B6D4), const Color(0xFFF59E0B), const Color(0xFF10B981), const Color(0xFF3B82F6)];
+    final distColors = [
+      const Color(0xFF4F46E5),
+      const Color(0xFF06B6D4),
+      const Color(0xFFF59E0B),
+      const Color(0xFF10B981),
+      const Color(0xFF3B82F6),
+    ];
 
     return Column(
       children: [
@@ -542,12 +800,30 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                         color: AppColors.purple.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.bar_chart_rounded, color: AppColors.purple, size: 18),
+                      child: const Icon(
+                        Icons.bar_chart_rounded,
+                        color: AppColors.purple,
+                        size: 18,
+                      ),
                     ),
                     const SizedBox(width: 10),
-                    const Text('Weekly Study Hours', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                    const Text(
+                      'Weekly Study Hours',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
                     const Spacer(),
-                    Text('$totalH hrs', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.purple)),
+                    Text(
+                      '$totalH hrs',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.purple,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 18),
@@ -565,29 +841,66 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
-                              Text(h == 0 ? '' : '${h.toInt()}h',
-                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
-                                  color: isToday ? AppColors.purple : AppColors.textSecondary.withValues(alpha: 0.6))),
+                              Text(
+                                h == 0 ? '' : '${h.toInt()}h',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                  color: isToday
+                                      ? AppColors.purple
+                                      : AppColors.textSecondary.withValues(
+                                          alpha: 0.6,
+                                        ),
+                                ),
+                              ),
                               const SizedBox(height: 4),
                               AnimatedContainer(
                                 duration: const Duration(milliseconds: 400),
                                 height: pct * 60,
                                 decoration: BoxDecoration(
                                   gradient: LinearGradient(
-                                    colors: [isToday ? AppColors.purple : AppColors.purple.withValues(alpha: 0.4),
-                                      isToday ? const Color(0xFF7C3AED) : AppColors.purpleLight.withValues(alpha: 0.3)],
-                                    begin: Alignment.bottomCenter, end: Alignment.topCenter,
+                                    colors: [
+                                      isToday
+                                          ? AppColors.purple
+                                          : AppColors.purple.withValues(
+                                              alpha: 0.4,
+                                            ),
+                                      isToday
+                                          ? const Color(0xFF7C3AED)
+                                          : AppColors.purpleLight.withValues(
+                                              alpha: 0.3,
+                                            ),
+                                    ],
+                                    begin: Alignment.bottomCenter,
+                                    end: Alignment.topCenter,
                                   ),
                                   borderRadius: BorderRadius.circular(6),
                                   boxShadow: isToday
-                                      ? [BoxShadow(color: AppColors.purple.withValues(alpha: 0.3), blurRadius: 6, offset: const Offset(0, 2))]
+                                      ? [
+                                          BoxShadow(
+                                            color: AppColors.purple.withValues(
+                                              alpha: 0.3,
+                                            ),
+                                            blurRadius: 6,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ]
                                       : null,
                                 ),
                               ),
                               const SizedBox(height: 6),
-                              Text(labels[i],
-                                style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600,
-                                  color: isToday ? AppColors.purple : AppColors.textSecondary.withValues(alpha: 0.6))),
+                              Text(
+                                labels[i],
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: isToday
+                                      ? AppColors.purple
+                                      : AppColors.textSecondary.withValues(
+                                          alpha: 0.6,
+                                        ),
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -616,10 +929,21 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                         color: const Color(0xFF06B6D4).withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.pie_chart_rounded, color: Color(0xFF06B6D4), size: 18),
+                      child: const Icon(
+                        Icons.pie_chart_rounded,
+                        color: Color(0xFF06B6D4),
+                        size: 18,
+                      ),
                     ),
                     const SizedBox(width: 10),
-                    const Text('Subject Distribution', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                    const Text(
+                      'Subject Distribution',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -627,7 +951,8 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                   children: [
                     // Donut
                     SizedBox(
-                      width: 100, height: 100,
+                      width: 100,
+                      height: 100,
                       child: CustomPaint(
                         painter: _DonutChartPainter(
                           values: dist.values.toList(),
@@ -637,8 +962,23 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text('${totalH.toInt()}h', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-                              Text('total', style: TextStyle(fontSize: 9, color: AppColors.textSecondary.withValues(alpha: 0.7))),
+                              Text(
+                                '${totalH.toInt()}h',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              Text(
+                                'total',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  color: AppColors.textSecondary.withValues(
+                                    alpha: 0.7,
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -648,14 +988,18 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                     // Legend
                     Expanded(
                       child: Column(
-                        children: dist.entries.toList().asMap().entries.map((e) {
+                        children: dist.entries.toList().asMap().entries.map((
+                          e,
+                        ) {
                           final i = e.key;
                           final entry = e.value;
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 6),
                             child: Row(
                               children: [
-                                Container(width: 10, height: 10,
+                                Container(
+                                  width: 10,
+                                  height: 10,
                                   decoration: BoxDecoration(
                                     color: distColors[i % distColors.length],
                                     borderRadius: BorderRadius.circular(3),
@@ -663,11 +1007,23 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                                 ),
                                 const SizedBox(width: 8),
                                 Expanded(
-                                  child: Text(entry.key,
-                                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                                  child: Text(
+                                    entry.key,
+                                    style: const TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
                                 ),
-                                Text('${(entry.value * 100).toInt()}%',
-                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textSecondary)),
+                                Text(
+                                  '${(entry.value * 100).toInt()}%',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
                               ],
                             ),
                           );
@@ -686,8 +1042,10 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
 
   Widget _buildScheduleList() {
     final items = _DashboardRepository.schedule;
-    if (items.isEmpty) return _emptyCard(Icons.event_available_rounded, 'No schedule today.');
-    if (items.every((s) => s.isCompleted)) return _emptyCard(Icons.task_alt_rounded, 'All done for today!');
+    if (items.isEmpty)
+      return _emptyCard(Icons.event_available_rounded, 'No schedule today.');
+    if (items.every((s) => s.isCompleted))
+      return _emptyCard(Icons.task_alt_rounded, 'All done for today!');
     return Column(
       children: items.map((item) {
         final isClass = item.type == 'Class' || item.type == 'Lab';
@@ -695,7 +1053,10 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: GestureDetector(
-            onTap: () { _DashboardRepository.toggleScheduleComplete(item.id); setState(() {}); },
+            onTap: () {
+              _DashboardRepository.toggleScheduleComplete(item.id);
+              setState(() {});
+            },
             child: _GlowCard(
               radius: 14,
               child: AnimatedContainer(
@@ -703,7 +1064,9 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(14),
-                  color: item.isCompleted ? const Color(0xFF10B981).withValues(alpha: 0.04) : null,
+                  color: item.isCompleted
+                      ? const Color(0xFF10B981).withValues(alpha: 0.04)
+                      : null,
                 ),
                 child: Row(
                   children: [
@@ -711,24 +1074,47 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                       width: 40,
                       child: Column(
                         children: [
-                          Text(item.time.format(context),
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800,
-                              color: item.isCompleted ? AppColors.textSecondary.withValues(alpha: 0.5) : AppColors.textPrimary)),
-                          Text(item.endTime.format(context),
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
-                              color: AppColors.textSecondary.withValues(alpha: item.isCompleted ? 0.3 : 0.6))),
+                          Text(
+                            item.time.format(context),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: item.isCompleted
+                                  ? AppColors.textSecondary.withValues(
+                                      alpha: 0.5,
+                                    )
+                                  : AppColors.textPrimary,
+                            ),
+                          ),
+                          Text(
+                            item.endTime.format(context),
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.textSecondary.withValues(
+                                alpha: item.isCompleted ? 0.3 : 0.6,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
                     const SizedBox(width: 10),
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 300),
-                      width: 3, height: 34,
+                      width: 3,
+                      height: 34,
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(colors: [
-                          item.isCompleted ? const Color(0xFF10B981) : accent,
-                          item.isCompleted ? const Color(0xFF10B981).withValues(alpha: 0.4) : accent.withValues(alpha: 0.4),
-                        ], begin: Alignment.topCenter, end: Alignment.bottomCenter),
+                        gradient: LinearGradient(
+                          colors: [
+                            item.isCompleted ? const Color(0xFF10B981) : accent,
+                            item.isCompleted
+                                ? const Color(0xFF10B981).withValues(alpha: 0.4)
+                                : accent.withValues(alpha: 0.4),
+                          ],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
@@ -737,19 +1123,58 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(item.title,
-                            style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700,
-                              color: item.isCompleted ? AppColors.textSecondary.withValues(alpha: 0.6) : AppColors.textPrimary,
-                              decoration: item.isCompleted ? TextDecoration.lineThrough : null)),
+                          Text(
+                            item.title,
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w700,
+                              color: item.isCompleted
+                                  ? AppColors.textSecondary.withValues(
+                                      alpha: 0.6,
+                                    )
+                                  : AppColors.textPrimary,
+                              decoration: item.isCompleted
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                            ),
+                          ),
                           const SizedBox(height: 2),
                           Row(
                             children: [
-                              Text(item.type, style: TextStyle(fontSize: 11.5, color: accent.withValues(alpha: 0.8))),
+                              Text(
+                                item.type,
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: accent.withValues(alpha: 0.8),
+                                ),
+                              ),
                               if (item.location != null) ...[
-                                Text(' · ', style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary.withValues(alpha: 0.5))),
-                                Icon(Icons.location_on_outlined, size: 11, color: AppColors.textSecondary.withValues(alpha: 0.5)),
+                                Text(
+                                  ' · ',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: AppColors.textSecondary.withValues(
+                                      alpha: 0.5,
+                                    ),
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.location_on_outlined,
+                                  size: 11,
+                                  color: AppColors.textSecondary.withValues(
+                                    alpha: 0.5,
+                                  ),
+                                ),
                                 const SizedBox(width: 2),
-                                Text(item.location!, style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary.withValues(alpha: 0.7))),
+                                Text(
+                                  item.location!,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: AppColors.textSecondary.withValues(
+                                      alpha: 0.7,
+                                    ),
+                                  ),
+                                ),
                               ],
                             ],
                           ),
@@ -758,13 +1183,27 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                     ),
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 300),
-                      width: 22, height: 22,
+                      width: 22,
+                      height: 22,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: item.isCompleted ? const Color(0xFF10B981) : Colors.transparent,
-                        border: Border.all(color: item.isCompleted ? const Color(0xFF10B981) : AppColors.border, width: 2),
+                        color: item.isCompleted
+                            ? const Color(0xFF10B981)
+                            : Colors.transparent,
+                        border: Border.all(
+                          color: item.isCompleted
+                              ? const Color(0xFF10B981)
+                              : AppColors.border,
+                          width: 2,
+                        ),
                       ),
-                      child: item.isCompleted ? const Icon(Icons.check_rounded, color: Colors.white, size: 13) : null,
+                      child: item.isCompleted
+                          ? const Icon(
+                              Icons.check_rounded,
+                              color: Colors.white,
+                              size: 13,
+                            )
+                          : null,
                     ),
                   ],
                 ),
@@ -778,12 +1217,15 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
 
   Widget _buildDeadlineList() {
     final items = _DashboardRepository.deadlines;
-    if (items.isEmpty) return _emptyCard(Icons.event_note_rounded, 'No upcoming deadlines.');
+    if (items.isEmpty)
+      return _emptyCard(Icons.event_note_rounded, 'No upcoming deadlines.');
     return Column(
       children: items.map((d) {
         final urgent = d.isUrgent;
         final overdue = d.isOverdue;
-        final urgColor = overdue ? const Color(0xFFDC2626) : const Color(0xFFF59E0B);
+        final urgColor = overdue
+            ? const Color(0xFFDC2626)
+            : const Color(0xFFF59E0B);
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: _GlowCard(
@@ -797,14 +1239,22 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
               child: Row(
                 children: [
                   Container(
-                    width: 40, height: 40,
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
-                      color: urgent ? urgColor.withValues(alpha: 0.12) : AppColors.purple.withValues(alpha: 0.08),
+                      color: urgent
+                          ? urgColor.withValues(alpha: 0.12)
+                          : AppColors.purple.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
-                      overdue ? Icons.error_outline_rounded : urgent ? Icons.warning_amber_rounded : Icons.event_note_outlined,
-                      color: urgent ? urgColor : AppColors.purple, size: 20,
+                      overdue
+                          ? Icons.error_outline_rounded
+                          : urgent
+                          ? Icons.warning_amber_rounded
+                          : Icons.event_note_outlined,
+                      color: urgent ? urgColor : AppColors.purple,
+                      size: 20,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -812,27 +1262,63 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(d.title, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                        Text(
+                          d.title,
+                          style: const TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
                         const SizedBox(height: 2),
                         Row(
                           children: [
-                            Text(d.course, style: TextStyle(fontSize: 12, color: AppColors.textSecondary.withValues(alpha: 0.8))),
+                            Text(
+                              d.course,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary.withValues(
+                                  alpha: 0.8,
+                                ),
+                              ),
+                            ),
                             if (d.courseCode != null)
-                              Text(' · ${d.courseCode}', style: TextStyle(fontSize: 12, color: AppColors.textSecondary.withValues(alpha: 0.5))),
+                              Text(
+                                ' · ${d.courseCode}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary.withValues(
+                                    alpha: 0.5,
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                       ],
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
                     decoration: BoxDecoration(
-                      color: urgent ? urgColor.withValues(alpha: 0.1) : AppColors.purple.withValues(alpha: 0.06),
+                      color: urgent
+                          ? urgColor.withValues(alpha: 0.1)
+                          : AppColors.purple.withValues(alpha: 0.06),
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(
-                      overdue ? 'Overdue!' : d.daysLeft == 0 ? 'Today' : '${d.daysLeft}d',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: urgent ? urgColor : AppColors.purple),
+                      overdue
+                          ? 'Overdue!'
+                          : d.daysLeft == 0
+                          ? 'Today'
+                          : '${d.daysLeft}d',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: urgent ? urgColor : AppColors.purple,
+                      ),
                     ),
                   ),
                 ],
@@ -862,8 +1348,10 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
   }
 
   Widget _buildPlaceholderTab({
-    required String title, required String subtitle,
-    required IconData icon, required List<String> highlights,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required List<String> highlights,
   }) {
     return SafeArea(
       child: ListView(
@@ -876,11 +1364,16 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
               child: Row(
                 children: [
                   Container(
-                    width: 50, height: 50,
+                    width: 50,
+                    height: 50,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [AppColors.purple.withValues(alpha: 0.18), AppColors.purpleLight.withValues(alpha: 0.12)],
-                        begin: Alignment.topLeft, end: Alignment.bottomRight,
+                        colors: [
+                          AppColors.purple.withValues(alpha: 0.18),
+                          AppColors.purpleLight.withValues(alpha: 0.12),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
                       borderRadius: BorderRadius.circular(14),
                     ),
@@ -891,9 +1384,22 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
                         const SizedBox(height: 4),
-                        Text(subtitle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                        Text(
+                          subtitle,
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 13,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -904,25 +1410,44 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
           const SizedBox(height: 18),
           _sectionTitle('What you can do here'),
           const SizedBox(height: 10),
-          ...highlights.map((point) => Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: _GlowCard(
-              radius: 14, strokeWidth: 1.2,
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Row(
-                  children: [
-                    Container(width: 8, height: 8,
-                      decoration: const BoxDecoration(color: AppColors.purple, shape: BoxShape.circle)),
-                    const SizedBox(width: 12),
-                    Text(point, style: const TextStyle(color: AppColors.textPrimary, fontSize: 13.5, fontWeight: FontWeight.w600)),
-                  ],
+          ...highlights.map(
+            (point) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _GlowCard(
+                radius: 14,
+                strokeWidth: 1.2,
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: AppColors.purple,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        point,
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          )),
+          ),
           const SizedBox(height: 12),
-          _emptyCard(Icons.construction_rounded, 'Feature coming soon. Connect this tab with your backend next.'),
+          _emptyCard(
+            Icons.construction_rounded,
+            'Feature coming soon. Connect this tab with your backend next.',
+          ),
         ],
       ),
     );
@@ -941,6 +1466,7 @@ class _ProfileSheet extends StatelessWidget {
   final VoidCallback onNavigateToDashboard;
   final VoidCallback onNavigateToBudget;
   final VoidCallback onOpenAppBlocker;
+  final VoidCallback onNavigateToLeaderboard;
 
   const _ProfileSheet({
     required this.profile,
@@ -950,11 +1476,17 @@ class _ProfileSheet extends StatelessWidget {
     required this.onNavigateToDashboard,
     required this.onNavigateToBudget,
     required this.onOpenAppBlocker,
+    required this.onNavigateToLeaderboard,
   });
 
   @override
   Widget build(BuildContext context) {
-    final initial = profile.name.split(' ').where((w) => w.isNotEmpty && w.length > 1).map((e) => e[0]).take(2).join();
+    final initial = profile.name
+        .split(' ')
+        .where((w) => w.isNotEmpty && w.length > 1)
+        .map((e) => e[0])
+        .take(2)
+        .join();
     return Container(
       margin: const EdgeInsets.only(top: 20),
       decoration: const BoxDecoration(
@@ -965,30 +1497,67 @@ class _ProfileSheet extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(22, 12, 22, 32),
         shrinkWrap: true,
         children: [
-          Center(child: Container(width: 40, height: 5,
-            decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(999)))),
+          Center(
+            child: Container(
+              width: 40,
+              height: 5,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
           const SizedBox(height: 16),
           // Avatar + name
           Center(
             child: Column(
               children: [
                 Container(
-                  width: 74, height: 74,
+                  width: 74,
+                  height: 74,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [AppColors.purple, Color(0xFF7C3AED)],
-                      begin: Alignment.topLeft, end: Alignment.bottomRight),
+                    gradient: const LinearGradient(
+                      colors: [AppColors.purple, Color(0xFF7C3AED)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
                     borderRadius: BorderRadius.circular(22),
-                    boxShadow: [BoxShadow(color: AppColors.purple.withValues(alpha: 0.25), blurRadius: 14, offset: const Offset(0, 6))],
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.purple.withValues(alpha: 0.25),
+                        blurRadius: 14,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
                   ),
                   child: Center(
-                    child: Text(initial,
-                      style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w700)),
+                    child: Text(
+                      initial,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
-                Text(profile.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                Text(
+                  profile.name,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text(profile.email, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                Text(
+                  profile.email,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 13,
+                  ),
+                ),
               ],
             ),
           ),
@@ -999,15 +1568,29 @@ class _ProfileSheet extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppColors.card,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AppColors.border.withValues(alpha: 0.4)),
+              border: Border.all(
+                color: AppColors.border.withValues(alpha: 0.4),
+              ),
             ),
             child: Column(
               children: [
-                _infoRow(Icons.school_rounded, 'Department', profile.department),
+                _infoRow(
+                  Icons.school_rounded,
+                  'Department',
+                  profile.department,
+                ),
                 const Divider(height: 20, color: AppColors.border),
-                _infoRow(Icons.auto_stories_rounded, 'Semester', '${profile.semester} · ${profile.session}'),
+                _infoRow(
+                  Icons.auto_stories_rounded,
+                  'Semester',
+                  '${profile.semester} · ${profile.session}',
+                ),
                 const Divider(height: 20, color: AppColors.border),
-                _infoRow(Icons.badge_outlined, 'Student ID', profile.id.toUpperCase()),
+                _infoRow(
+                  Icons.badge_outlined,
+                  'Student ID',
+                  profile.id.toUpperCase(),
+                ),
                 const Divider(height: 20, color: AppColors.border),
                 _infoRow(Icons.phone_rounded, 'Phone', profile.phone),
               ],
@@ -1020,33 +1603,68 @@ class _ProfileSheet extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppColors.card,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AppColors.border.withValues(alpha: 0.4)),
+              border: Border.all(
+                color: AppColors.border.withValues(alpha: 0.4),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.menu_book_rounded, color: AppColors.purple, size: 18),
+                    const Icon(
+                      Icons.menu_book_rounded,
+                      color: AppColors.purple,
+                      size: 18,
+                    ),
                     const SizedBox(width: 8),
-                    const Text('Enrolled Courses', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                    const Text(
+                      'Enrolled Courses',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
                     const Spacer(),
-                    Text('${profile.enrolledCourses.length} subjects',
-                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary.withValues(alpha: 0.7))),
+                    Text(
+                      '${profile.enrolledCourses.length} subjects',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary.withValues(alpha: 0.7),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
                 Wrap(
-                  spacing: 8, runSpacing: 8,
-                  children: profile.enrolledCourses.map((code) => Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppColors.purple.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: AppColors.purple.withValues(alpha: 0.15)),
-                    ),
-                    child: Text(code, style: const TextStyle(color: AppColors.purple, fontSize: 12, fontWeight: FontWeight.w700)),
-                  )).toList(),
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: profile.enrolledCourses
+                      .map(
+                        (code) => Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.purple.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: AppColors.purple.withValues(alpha: 0.15),
+                            ),
+                          ),
+                          child: Text(
+                            code,
+                            style: const TextStyle(
+                              color: AppColors.purple,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
                 ),
                 const SizedBox(height: 10),
                 GestureDetector(
@@ -1061,9 +1679,20 @@ class _ProfileSheet extends StatelessWidget {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Text('View in Planner', style: TextStyle(color: AppColors.purple, fontSize: 13, fontWeight: FontWeight.w600)),
+                        const Text(
+                          'View in Planner',
+                          style: TextStyle(
+                            color: AppColors.purple,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         const SizedBox(width: 4),
-                        const Icon(Icons.arrow_forward_rounded, color: AppColors.purple, size: 16),
+                        const Icon(
+                          Icons.arrow_forward_rounded,
+                          color: AppColors.purple,
+                          size: 16,
+                        ),
                       ],
                     ),
                   ),
@@ -1078,26 +1707,71 @@ class _ProfileSheet extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppColors.card,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AppColors.border.withValues(alpha: 0.4)),
+              border: Border.all(
+                color: AppColors.border.withValues(alpha: 0.4),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Row(
                   children: [
-                    Icon(Icons.explore_outlined, color: AppColors.textSecondary, size: 18),
+                    Icon(
+                      Icons.explore_outlined,
+                      color: AppColors.textSecondary,
+                      size: 18,
+                    ),
                     SizedBox(width: 8),
-                    Text('Quick Access', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                    Text(
+                      'Quick Access',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                _quickLink(Icons.local_fire_department_rounded, 'Habit Tracker', 'Check today\'s progress', const Color(0xFFF59E0B), onNavigateToHabits),
+                _quickLink(
+                  Icons.local_fire_department_rounded,
+                  'Habit Tracker',
+                  'Check today\'s progress',
+                  const Color(0xFFF59E0B),
+                  onNavigateToHabits,
+                ),
                 const SizedBox(height: 8),
-                _quickLink(Icons.account_balance_wallet_rounded, 'Expense Manager', 'View budget & spending', const Color(0xFF10B981), onNavigateToBudget),
+                _quickLink(
+                  Icons.account_balance_wallet_rounded,
+                  'Expense Manager',
+                  'View budget & spending',
+                  const Color(0xFF10B981),
+                  onNavigateToBudget,
+                ),
                 const SizedBox(height: 8),
-                _quickLink(Icons.block_rounded, 'App Blocker', 'Block distracting apps', const Color(0xFFDC2626), onOpenAppBlocker),
+                _quickLink(
+                  Icons.leaderboard_rounded,
+                  'Leaderboard',
+                  'See class-wide rankings',
+                  const Color(0xFF6366F1),
+                  onNavigateToLeaderboard,
+                ),
                 const SizedBox(height: 8),
-                _quickLink(Icons.dashboard_rounded, 'Twin Dashboard', 'Back to home overview', AppColors.purple, onNavigateToDashboard),
+                _quickLink(
+                  Icons.block_rounded,
+                  'App Blocker',
+                  'Block distracting apps',
+                  const Color(0xFFDC2626),
+                  onOpenAppBlocker,
+                ),
+                const SizedBox(height: 8),
+                _quickLink(
+                  Icons.dashboard_rounded,
+                  'Twin Dashboard',
+                  'Back to home overview',
+                  AppColors.purple,
+                  onNavigateToDashboard,
+                ),
               ],
             ),
           ),
@@ -1108,24 +1782,52 @@ class _ProfileSheet extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppColors.card,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AppColors.border.withValues(alpha: 0.4)),
+              border: Border.all(
+                color: AppColors.border.withValues(alpha: 0.4),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Row(
                   children: [
-                    Icon(Icons.settings_outlined, color: AppColors.textSecondary, size: 18),
+                    Icon(
+                      Icons.settings_outlined,
+                      color: AppColors.textSecondary,
+                      size: 18,
+                    ),
                     SizedBox(width: 8),
-                    Text('Settings', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                    Text(
+                      'Settings',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                _settingRow(Icons.palette_outlined, 'App Theme', 'Light', () {}),
+                _settingRow(
+                  Icons.palette_outlined,
+                  'App Theme',
+                  'Light',
+                  () {},
+                ),
                 const SizedBox(height: 4),
-                _settingRow(Icons.notifications_outlined, 'Notifications', 'On', () {}),
+                _settingRow(
+                  Icons.notifications_outlined,
+                  'Notifications',
+                  'On',
+                  () {},
+                ),
                 const SizedBox(height: 4),
-                _settingRow(Icons.language_outlined, 'Language', 'English', () {}),
+                _settingRow(
+                  Icons.language_outlined,
+                  'Language',
+                  'English',
+                  () {},
+                ),
               ],
             ),
           ),
@@ -1136,12 +1838,21 @@ class _ProfileSheet extends StatelessWidget {
             child: OutlinedButton.icon(
               onPressed: onSignOut,
               icon: const Icon(Icons.logout_rounded, size: 18),
-              label: const Text('Sign Out', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+              label: const Text(
+                'Sign Out',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+              ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: const Color(0xFFDC2626),
-                side: BorderSide(color: const Color(0xFFDC2626).withValues(alpha: 0.3)),
-                backgroundColor: const Color(0xFFDC2626).withValues(alpha: 0.05),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                side: BorderSide(
+                  color: const Color(0xFFDC2626).withValues(alpha: 0.3),
+                ),
+                backgroundColor: const Color(
+                  0xFFDC2626,
+                ).withValues(alpha: 0.05),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
             ),
           ),
@@ -1154,7 +1865,8 @@ class _ProfileSheet extends StatelessWidget {
     return Row(
       children: [
         Container(
-          width: 36, height: 36,
+          width: 36,
+          height: 36,
           decoration: BoxDecoration(
             color: AppColors.purple.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(10),
@@ -1166,9 +1878,22 @@ class _ProfileSheet extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 11.5,
+                ),
+              ),
               const SizedBox(height: 2),
-              Text(value, style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)),
+              Text(
+                value,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
         ),
@@ -1176,7 +1901,13 @@ class _ProfileSheet extends StatelessWidget {
     );
   }
 
-  Widget _quickLink(IconData icon, String title, String subtitle, Color color, VoidCallback onTap) {
+  Widget _quickLink(
+    IconData icon,
+    String title,
+    String subtitle,
+    Color color,
+    VoidCallback onTap,
+  ) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -1194,19 +1925,41 @@ class _ProfileSheet extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w700)),
-                  Text(subtitle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 11.5,
+                    ),
+                  ),
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, color: color.withValues(alpha: 0.5), size: 20),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: color.withValues(alpha: 0.5),
+              size: 20,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _settingRow(IconData icon, String label, String value, VoidCallback onTap) {
+  Widget _settingRow(
+    IconData icon,
+    String label,
+    String value,
+    VoidCallback onTap,
+  ) {
     return GestureDetector(
       onTap: onTap,
       child: Padding(
@@ -1215,10 +1968,29 @@ class _ProfileSheet extends StatelessWidget {
           children: [
             Icon(icon, color: AppColors.textSecondary, size: 20),
             const SizedBox(width: 12),
-            Expanded(child: Text(label, style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w500))),
-            Text(value, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            Text(
+              value,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 13,
+              ),
+            ),
             const SizedBox(width: 8),
-            const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary, size: 18),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: AppColors.textSecondary,
+              size: 18,
+            ),
           ],
         ),
       ),
@@ -1234,7 +2006,11 @@ class _TabItem {
   final String label;
   final IconData icon;
   final IconData activeIcon;
-  const _TabItem({required this.label, required this.icon, required this.activeIcon});
+  const _TabItem({
+    required this.label,
+    required this.icon,
+    required this.activeIcon,
+  });
 }
 
 class _StatTile extends StatelessWidget {
@@ -1243,7 +2019,13 @@ class _StatTile extends StatelessWidget {
   final String value;
   final Color accent;
   final VoidCallback onTap;
-  const _StatTile({required this.icon, required this.label, required this.value, required this.accent, required this.onTap});
+  const _StatTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.accent,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1258,16 +2040,36 @@ class _StatTile extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [accent.withValues(alpha: 0.16), accent.withValues(alpha: 0.06)],
-                    begin: Alignment.topLeft, end: Alignment.bottomRight),
+                  gradient: LinearGradient(
+                    colors: [
+                      accent.withValues(alpha: 0.16),
+                      accent.withValues(alpha: 0.06),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(icon, color: accent, size: 18),
               ),
               const SizedBox(height: 8),
-              Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                ),
+              ),
               const SizedBox(height: 1),
-              Text(label, textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary.withValues(alpha: 0.8), fontSize: 11)),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.textSecondary.withValues(alpha: 0.8),
+                  fontSize: 11,
+                ),
+              ),
             ],
           ),
         ),
@@ -1277,7 +2079,11 @@ class _StatTile extends StatelessWidget {
 }
 
 class _GlowCard extends StatelessWidget {
-  const _GlowCard({required this.child, this.radius = 16, this.strokeWidth = 1.6});
+  const _GlowCard({
+    required this.child,
+    this.radius = 16,
+    this.strokeWidth = 1.6,
+  });
 
   final Widget child;
   final double radius;
@@ -1288,15 +2094,29 @@ class _GlowCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(radius),
-        boxShadow: [BoxShadow(color: const Color(0xFF2563EB).withValues(alpha: 0.18), blurRadius: 16, offset: const Offset(0, 6))],
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF2563EB).withValues(alpha: 0.18),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
-      child: _StaticBorderBox(borderRadius: radius, strokeWidth: strokeWidth, child: child),
+      child: _StaticBorderBox(
+        borderRadius: radius,
+        strokeWidth: strokeWidth,
+        child: child,
+      ),
     );
   }
 }
 
 class _StaticBorderBox extends StatelessWidget {
-  const _StaticBorderBox({required this.child, this.borderRadius = 16, this.strokeWidth = 1.6});
+  const _StaticBorderBox({
+    required this.child,
+    this.borderRadius = 16,
+    this.strokeWidth = 1.6,
+  });
 
   final Widget child;
   final double borderRadius;
@@ -1309,7 +2129,9 @@ class _StaticBorderBox extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.all(strokeWidth),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular((borderRadius - strokeWidth).clamp(0, borderRadius)),
+          borderRadius: BorderRadius.circular(
+            (borderRadius - strokeWidth).clamp(0, borderRadius),
+          ),
           child: ColoredBox(color: AppColors.card, child: child),
         ),
       ),
@@ -1326,20 +2148,31 @@ class _BorderPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rrect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(strokeWidth / 2, strokeWidth / 2, size.width - strokeWidth, size.height - strokeWidth),
+      Rect.fromLTWH(
+        strokeWidth / 2,
+        strokeWidth / 2,
+        size.width - strokeWidth,
+        size.height - strokeWidth,
+      ),
       Radius.circular(radius),
     );
     final paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
       ..shader = const SweepGradient(
-        colors: [Color(0xFF1E40AF), Color(0xFF3B82F6), Color(0xFF7DB4FF), Color(0xFF1E40AF)],
+        colors: [
+          Color(0xFF1E40AF),
+          Color(0xFF3B82F6),
+          Color(0xFF7DB4FF),
+          Color(0xFF1E40AF),
+        ],
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
     canvas.drawRRect(rrect, paint);
   }
 
   @override
-  bool shouldRepaint(covariant _BorderPainter old) => old.radius != radius || old.strokeWidth != strokeWidth;
+  bool shouldRepaint(covariant _BorderPainter old) =>
+      old.radius != radius || old.strokeWidth != strokeWidth;
 }
 
 class _AnimatedBorderBox extends StatelessWidget {
@@ -1351,9 +2184,16 @@ class _AnimatedBorderBox extends StatelessWidget {
   final List<Color> colors;
 
   const _AnimatedBorderBox({
-    required this.animation, required this.child,
-    this.borderRadius = 16, this.strokeWidth = 1.6,
-    this.fillColor = AppColors.card, this.colors = const [Color(0xFF1E40AF), Color(0xFF3B82F6), Color(0xFF1E40AF)],
+    required this.animation,
+    required this.child,
+    this.borderRadius = 16,
+    this.strokeWidth = 1.6,
+    this.fillColor = AppColors.card,
+    this.colors = const [
+      Color(0xFF1E40AF),
+      Color(0xFF3B82F6),
+      Color(0xFF1E40AF),
+    ],
   });
 
   @override
@@ -1361,11 +2201,18 @@ class _AnimatedBorderBox extends StatelessWidget {
     return AnimatedBuilder(
       animation: animation,
       builder: (_, _) => CustomPaint(
-        painter: _RotatingBorderPainter(t: animation.value, radius: borderRadius, strokeWidth: strokeWidth, colors: colors),
+        painter: _RotatingBorderPainter(
+          t: animation.value,
+          radius: borderRadius,
+          strokeWidth: strokeWidth,
+          colors: colors,
+        ),
         child: Padding(
           padding: EdgeInsets.all(strokeWidth),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular((borderRadius - strokeWidth).clamp(0, borderRadius)),
+            borderRadius: BorderRadius.circular(
+              (borderRadius - strokeWidth).clamp(0, borderRadius),
+            ),
             child: ColoredBox(color: fillColor, child: child),
           ),
         ),
@@ -1380,22 +2227,36 @@ class _RotatingBorderPainter extends CustomPainter {
   final double strokeWidth;
   final List<Color> colors;
 
-  _RotatingBorderPainter({required this.t, required this.radius, required this.strokeWidth, required this.colors});
+  _RotatingBorderPainter({
+    required this.t,
+    required this.radius,
+    required this.strokeWidth,
+    required this.colors,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final rect = Rect.fromLTWH(strokeWidth / 2, strokeWidth / 2, size.width - strokeWidth, size.height - strokeWidth);
+    final rect = Rect.fromLTWH(
+      strokeWidth / 2,
+      strokeWidth / 2,
+      size.width - strokeWidth,
+      size.height - strokeWidth,
+    );
     final rrect = RRect.fromRectAndRadius(rect, Radius.circular(radius));
     final sweepColors = [...colors, colors.first];
     final paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
-      ..shader = SweepGradient(colors: sweepColors, transform: GradientRotation(t * 2 * 3.14159265)).createShader(rect);
+      ..shader = SweepGradient(
+        colors: sweepColors,
+        transform: GradientRotation(t * 2 * 3.14159265),
+      ).createShader(rect);
     canvas.drawRRect(rrect, paint);
   }
 
   @override
-  bool shouldRepaint(covariant _RotatingBorderPainter old) => old.t != t || old.colors != colors;
+  bool shouldRepaint(covariant _RotatingBorderPainter old) =>
+      old.t != t || old.colors != colors;
 }
 
 class _DonutChartPainter extends CustomPainter {
