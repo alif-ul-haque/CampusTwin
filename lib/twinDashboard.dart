@@ -259,7 +259,7 @@ class _DashboardPageState extends State<DashboardPage>
   @override
   void initState() {
     super.initState();
-    _selectedTabIndex = widget.initialTabIndex.clamp(0, 5);
+    _selectedTabIndex = widget.initialTabIndex.clamp(0, 4);
     _borderAnimController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 4),
@@ -351,11 +351,6 @@ class _DashboardPageState extends State<DashboardPage>
       label: 'Budget',
       icon: Icons.account_balance_wallet_outlined,
       activeIcon: Icons.account_balance_wallet_rounded,
-    ),
-    _TabItem(
-      label: 'Ranks',
-      icon: Icons.leaderboard_outlined,
-      activeIcon: Icons.leaderboard_rounded,
     ),
     _TabItem(
       label: 'Assistant',
@@ -545,8 +540,6 @@ class _DashboardPageState extends State<DashboardPage>
       case 3:
         return const BudgetPage();
       case 4:
-        return const LeaderboardPage();
-      case 5:
         return const AssistantTab();
       default:
         return const SizedBox.shrink();
