@@ -5,6 +5,7 @@ import 'package:campus_twin/habitTracker.dart';
 import 'package:campus_twin/welcome_page.dart';
 import 'package:campus_twin/assistant.dart';
 import 'package:campus_twin/budget_page.dart';
+import 'package:campus_twin/app_blocker_page.dart';
 
 // =============================================================================
 // DATA MODELS
@@ -227,6 +228,12 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
         onNavigateToBudget: () {
           Navigator.of(context).pop();
           setState(() => _selectedTabIndex = 3);
+        },
+        onOpenAppBlocker: () {
+          Navigator.of(context).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const AppBlockerPage()),
+          );
         },
       ),
     );
@@ -933,6 +940,7 @@ class _ProfileSheet extends StatelessWidget {
   final VoidCallback onNavigateToHabits;
   final VoidCallback onNavigateToDashboard;
   final VoidCallback onNavigateToBudget;
+  final VoidCallback onOpenAppBlocker;
 
   const _ProfileSheet({
     required this.profile,
@@ -941,6 +949,7 @@ class _ProfileSheet extends StatelessWidget {
     required this.onNavigateToHabits,
     required this.onNavigateToDashboard,
     required this.onNavigateToBudget,
+    required this.onOpenAppBlocker,
   });
 
   @override
@@ -1085,6 +1094,8 @@ class _ProfileSheet extends StatelessWidget {
                 _quickLink(Icons.local_fire_department_rounded, 'Habit Tracker', 'Check today\'s progress', const Color(0xFFF59E0B), onNavigateToHabits),
                 const SizedBox(height: 8),
                 _quickLink(Icons.account_balance_wallet_rounded, 'Expense Manager', 'View budget & spending', const Color(0xFF10B981), onNavigateToBudget),
+                const SizedBox(height: 8),
+                _quickLink(Icons.block_rounded, 'App Blocker', 'Block distracting apps', const Color(0xFFDC2626), onOpenAppBlocker),
                 const SizedBox(height: 8),
                 _quickLink(Icons.dashboard_rounded, 'Twin Dashboard', 'Back to home overview', AppColors.purple, onNavigateToDashboard),
               ],
