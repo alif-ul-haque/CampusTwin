@@ -1,7 +1,7 @@
-import 'dart:typed_data';
 import 'package:device_apps/device_apps.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:campus_twin/l10n.dart';
 import 'package:campus_twin/theme.dart';
 
 // =============================================================================
@@ -96,7 +96,7 @@ class _AppBlockerPageState extends State<AppBlockerPage>
   void _toggleSession() {
     if (_blocked.isEmpty && !_sessionActive) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Text('Select at least one app to block first.'),
+        content: Text(AppStrings.selectAppFirst),
         backgroundColor: const Color(0xFFDC2626),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -130,11 +130,11 @@ class _AppBlockerPageState extends State<AppBlockerPage>
         scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-          color: AppColors.textPrimary,
+          color: AppPalette.textPrimary(context),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text('App Blocker',
-            style: TextStyle(color: AppColors.textPrimary,
+        title: Text(AppStrings.appBlockerTitle,
+            style: TextStyle(color: AppPalette.textPrimary(context),
                 fontSize: 18, fontWeight: FontWeight.w800)),
         actions: [
           if (_state == _LoadState.ready)
@@ -145,7 +145,7 @@ class _AppBlockerPageState extends State<AppBlockerPage>
                 color: AppColors.purple.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Text('${_blocked.length} blocked',
+              child: Text(AppStrings.blockedCount(_blocked.length),
                   style: const TextStyle(color: AppColors.purple,
                       fontSize: 12, fontWeight: FontWeight.w700)),
             ),
@@ -173,8 +173,8 @@ class _AppBlockerPageState extends State<AppBlockerPage>
         _SessionBar(active: _sessionActive, minutes: _sessionMinutes,
             onPickDuration: _pickDuration, onToggle: _toggleSession),
         const SizedBox(height: 24),
-        _SectionHeader(title: 'Installed Apps',
-            trailing: '${_apps.length} found'),
+        _SectionHeader(title: AppStrings.installedApps,
+            trailing: AppStrings.appsFound(_apps.length)),
         const SizedBox(height: 12),
         _AppGrid(apps: _apps, blocked: _blocked, onToggle: _toggle),
         const SizedBox(height: 24),
@@ -211,21 +211,20 @@ class _PermissionScreen extends StatelessWidget {
                 color: AppColors.purple, size: 44),
           ),
           const SizedBox(height: 28),
-          const Text('Usage Access Required',
+          Text(AppStrings.usageAccessTitle,
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary)),
+                  color: AppPalette.textPrimary(context))),
           const SizedBox(height: 12),
           Text(
-            'App Blocker needs "Usage Access" permission to see which apps are installed and running on your phone.\n\n'
-            'Tap below → find Campus Twin → enable the toggle.',
+            AppStrings.usageAccessBody,
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 14, color: AppColors.textSecondary,
+            style: TextStyle(fontSize: 14, color: AppPalette.textSecondary(context),
                 height: 1.6),
           ),
           const SizedBox(height: 32),
           // Permission steps
-          ...['Open Settings', 'Find "Campus Twin"', 'Enable Usage Access']
+          ...[AppStrings.openSettings, AppStrings.findCampusTwin, AppStrings.enableUsageAccess]
               .asMap().entries.map((e) => Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Row(children: [
@@ -236,8 +235,8 @@ class _PermissionScreen extends StatelessWidget {
                           fontSize: 12, fontWeight: FontWeight.w800))),
               const SizedBox(width: 14),
               Text(e.value,
-                  style: const TextStyle(fontSize: 14,
-                      color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+                  style: TextStyle(fontSize: 14,
+                      color: AppPalette.textPrimary(context), fontWeight: FontWeight.w600)),
             ]),
           )),
           const SizedBox(height: 32),
@@ -246,8 +245,8 @@ class _PermissionScreen extends StatelessWidget {
             child: ElevatedButton.icon(
               onPressed: onGrant,
               icon: const Icon(Icons.open_in_new_rounded, size: 18),
-              label: const Text('Open Settings',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              label: Text(AppStrings.openSettings,
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.purple,
                 foregroundColor: Colors.white,
@@ -274,8 +273,8 @@ class _LoadingScreen extends StatelessWidget {
     child: Column(mainAxisSize: MainAxisSize.min, children: [
       const CircularProgressIndicator(color: AppColors.purple),
       const SizedBox(height: 16),
-      Text('Scanning installed apps…',
-          style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+      Text(AppStrings.scanningApps,
+          style: TextStyle(color: AppPalette.textSecondary(context), fontSize: 14)),
     ]),
   );
 }
@@ -290,17 +289,17 @@ class _ErrorScreen extends StatelessWidget {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 48),
         const SizedBox(height: 16),
-        const Text('Failed to load apps',
+        Text(AppStrings.failedToLoadApps,
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary)),
+                color: AppPalette.textPrimary(context))),
         const SizedBox(height: 8),
         Text(msg, textAlign: TextAlign.center,
-            style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+            style: TextStyle(color: AppPalette.textSecondary(context), fontSize: 13)),
         const SizedBox(height: 24),
         ElevatedButton(onPressed: onRetry,
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.purple,
                 foregroundColor: Colors.white),
-            child: const Text('Retry')),
+            child: Text(AppStrings.retry)),
       ]),
     ),
   );
@@ -349,13 +348,13 @@ class _StatusCard extends StatelessWidget {
             const SizedBox(width: 14),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(active ? 'Focus Mode Active' : 'Focus Mode Off',
+                Text(active ? AppStrings.focusModeActive : AppStrings.focusModeOff,
                     style: const TextStyle(color: Colors.white,
                         fontSize: 17, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 3),
                 Text(active
-                    ? '$blockedCount app(s) blocked · $minutes min session'
-                    : 'Pick apps from YOUR phone below, then start.',
+                    ? AppStrings.focusActiveSub(blockedCount, minutes)
+                    : AppStrings.focusOffSub,
                     style: TextStyle(color: Colors.white.withValues(alpha: 0.75),
                         fontSize: 12.5)),
               ],
@@ -387,7 +386,7 @@ class _SessionBar extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
           decoration: BoxDecoration(
             color: Colors.white, borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
+            border: Border.all(color: AppPalette.border(context).withValues(alpha: 0.5)),
             boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04),
                 blurRadius: 8, offset: const Offset(0, 2))],
           ),
@@ -399,14 +398,14 @@ class _SessionBar extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Duration', style: TextStyle(color: AppColors.textSecondary,
+              Text(AppStrings.duration, style: TextStyle(color: AppPalette.textSecondary(context),
                   fontSize: 11, fontWeight: FontWeight.w500)),
-              Text('$minutes min', style: const TextStyle(color: AppColors.textPrimary,
+              Text(AppStrings.minutes(minutes), style: TextStyle(color: AppPalette.textPrimary(context),
                   fontSize: 15, fontWeight: FontWeight.w800)),
             ]),
             const Spacer(),
-            if (!active) const Icon(Icons.keyboard_arrow_down_rounded,
-                color: AppColors.textSecondary, size: 20),
+            if (!active) Icon(Icons.keyboard_arrow_down_rounded,
+                color: AppPalette.textSecondary(context), size: 20),
           ]),
         ),
       )),
@@ -431,7 +430,7 @@ class _SessionBar extends StatelessWidget {
             Icon(active ? Icons.stop_rounded : Icons.play_arrow_rounded,
                 color: Colors.white, size: 20),
             const SizedBox(width: 6),
-            Text(active ? 'Stop' : 'Start',
+            Text(active ? AppStrings.stop : AppStrings.start,
                 style: const TextStyle(color: Colors.white,
                     fontSize: 15, fontWeight: FontWeight.w800)),
           ]),
@@ -454,10 +453,10 @@ class _SectionHeader extends StatelessWidget {
         decoration: BoxDecoration(color: AppColors.purple,
             borderRadius: BorderRadius.circular(4))),
     const SizedBox(width: 8),
-    Text(title, style: const TextStyle(color: AppColors.textPrimary,
+    Text(title, style: TextStyle(color: AppPalette.textPrimary(context),
         fontSize: 16, fontWeight: FontWeight.w800)),
     const Spacer(),
-    Text(trailing, style: const TextStyle(color: AppColors.textSecondary,
+    Text(trailing, style: TextStyle(color: AppPalette.textSecondary(context),
         fontSize: 12, fontWeight: FontWeight.w500)),
   ]);
 }
@@ -498,7 +497,7 @@ class _AppGrid extends StatelessWidget {
               border: Border.all(
                 color: isBlocked
                     ? const Color(0xFFDC2626).withValues(alpha: 0.4)
-                    : AppColors.border.withValues(alpha: 0.5),
+                    : AppPalette.border(context).withValues(alpha: 0.5),
                 width: isBlocked ? 1.8 : 1,
               ),
               boxShadow: isBlocked
@@ -538,12 +537,12 @@ class _AppGrid extends StatelessWidget {
                 textAlign: TextAlign.center, maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
-                  color: isBlocked ? const Color(0xFFDC2626) : AppColors.textPrimary),
+                  color: isBlocked ? const Color(0xFFDC2626) : AppPalette.textPrimary(context)),
               ),
               if (isBlocked) ...[
                 const SizedBox(height: 3),
-                const Text('Blocked',
-                    style: TextStyle(fontSize: 9.5,
+                Text(AppStrings.blocked,
+                    style: const TextStyle(fontSize: 9.5,
                         color: Color(0xFFDC2626), fontWeight: FontWeight.w700)),
               ],
             ]),
@@ -562,10 +561,10 @@ class _TipsCard extends StatelessWidget {
   const _TipsCard();
   @override
   Widget build(BuildContext context) {
-    const tips = [
-      '📵 Blocking apps helps you stay in flow state longer.',
-      '⏱️  Try the 25-min Pomodoro technique for deep work.',
-      '🔕 Combine with Do Not Disturb for best results.',
+    final tips = [
+      AppStrings.tip1,
+      AppStrings.tip2,
+      AppStrings.tip3,
     ];
     return Container(
       padding: const EdgeInsets.all(16),
@@ -575,16 +574,16 @@ class _TipsCard extends StatelessWidget {
         border: Border.all(color: AppColors.purple.withValues(alpha: 0.12)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Row(children: [
-          Icon(Icons.lightbulb_outline_rounded, color: AppColors.purple, size: 18),
-          SizedBox(width: 8),
-          Text('Focus Tips', style: TextStyle(color: AppColors.purple,
+        Row(children: [
+          const Icon(Icons.lightbulb_outline_rounded, color: AppColors.purple, size: 18),
+          const SizedBox(width: 8),
+          Text(AppStrings.focusTips, style: const TextStyle(color: AppColors.purple,
               fontSize: 14, fontWeight: FontWeight.w700)),
         ]),
         const SizedBox(height: 10),
         ...tips.map((t) => Padding(
           padding: const EdgeInsets.only(bottom: 6),
-          child: Text(t, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12.5)),
+          child: Text(t, style: TextStyle(color: AppPalette.textSecondary(context), fontSize: 12.5)),
         )),
       ]),
     );
@@ -600,13 +599,13 @@ class _DurationSheet extends StatelessWidget {
   final ValueChanged<int> onSelected;
   const _DurationSheet({required this.current, required this.onSelected});
 
-  static const _opts = [
-    (15, 'Quick Focus', Icons.coffee_rounded),
-    (25, 'Pomodoro', Icons.timer_rounded),
-    (45, 'Deep Work', Icons.psychology_rounded),
-    (60, '1 Hour', Icons.hourglass_bottom_rounded),
-    (90, 'Long Session', Icons.auto_awesome_rounded),
-    (120, 'Power Block', Icons.bolt_rounded),
+  static final _opts = [
+    (15, AppStrings.quickFocus, Icons.coffee_rounded),
+    (25, AppStrings.pomodoro, Icons.timer_rounded),
+    (45, AppStrings.deepWork, Icons.psychology_rounded),
+    (60, AppStrings.oneHour, Icons.hourglass_bottom_rounded),
+    (90, AppStrings.longSession, Icons.auto_awesome_rounded),
+    (120, AppStrings.powerBlock, Icons.bolt_rounded),
   ];
 
   @override
@@ -620,12 +619,12 @@ class _DurationSheet extends StatelessWidget {
       ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Center(child: Container(width: 40, height: 5,
-            decoration: BoxDecoration(color: AppColors.border,
+            decoration: BoxDecoration(color: AppPalette.border(context),
                 borderRadius: BorderRadius.circular(999)))),
         const SizedBox(height: 16),
-        const Text('Select Duration',
+        Text(AppStrings.selectDuration,
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary)),
+                color: AppPalette.textPrimary(context))),
         const SizedBox(height: 16),
         GridView.count(
           shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
@@ -642,17 +641,17 @@ class _DurationSheet extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: sel ? AppColors.purple.withValues(alpha: 0.4)
-                        : AppColors.border.withValues(alpha: 0.5),
+                        : AppPalette.border(context).withValues(alpha: 0.5),
                     width: sel ? 1.8 : 1,
                   ),
                 ),
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(o.$3, color: sel ? AppColors.purple : AppColors.textSecondary, size: 22),
+                  Icon(o.$3, color: sel ? AppColors.purple : AppPalette.textSecondary(context), size: 22),
                   const SizedBox(height: 4),
                   Text('${o.$1}m', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800,
-                      color: sel ? AppColors.purple : AppColors.textPrimary)),
+                      color: sel ? AppColors.purple : AppPalette.textPrimary(context))),
                   Text(o.$2, style: TextStyle(fontSize: 9.5,
-                      color: sel ? AppColors.purple.withValues(alpha: 0.8) : AppColors.textSecondary)),
+                      color: sel ? AppColors.purple.withValues(alpha: 0.8) : AppPalette.textSecondary(context))),
                 ]),
               ),
             );

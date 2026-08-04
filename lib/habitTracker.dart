@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:campus_twin/theme.dart';
 import 'package:campus_twin/app_widget.dart';
 import 'package:campus_twin/twinDashboard.dart';
+import 'package:campus_twin/l10n.dart';
+import 'package:campus_twin/app_settings.dart';
 
 // =============================================================================
 // DATA MODELS
@@ -89,9 +91,9 @@ class _HabitRepository {
   static int checkInStreak = 5;
 
   static List<HabitMetric> metrics = [
-    const HabitMetric(
+    HabitMetric(
       type: HabitType.sleep,
-      title: 'Sleep',
+      title: AppStrings.habitSleep,
       icon: Icons.bedtime_rounded,
       color: Color(0xFF6366F1),
       current: 6.5,
@@ -100,9 +102,9 @@ class _HabitRepository {
       weekValues: [7.2, 6.8, 5.5, 6.0, 7.5, 8.1, 6.5],
       streak: 4,
     ),
-    const HabitMetric(
+    HabitMetric(
       type: HabitType.water,
-      title: 'Water Intake',
+      title: AppStrings.habitWaterIntake,
       icon: Icons.water_drop_rounded,
       color: Color(0xFF06B6D4),
       current: 1.8,
@@ -111,9 +113,9 @@ class _HabitRepository {
       weekValues: [2.5, 2.8, 1.9, 2.2, 3.0, 2.6, 1.8],
       streak: 7,
     ),
-    const HabitMetric(
+    HabitMetric(
       type: HabitType.exercise,
-      title: 'Exercise',
+      title: AppStrings.habitExercise,
       icon: Icons.fitness_center_rounded,
       color: Color(0xFF10B981),
       current: 25,
@@ -122,9 +124,9 @@ class _HabitRepository {
       weekValues: [30, 45, 0, 20, 40, 50, 25],
       streak: 2,
     ),
-    const HabitMetric(
+    HabitMetric(
       type: HabitType.screenTime,
-      title: 'Screen Time',
+      title: AppStrings.habitScreenTime,
       icon: Icons.smartphone_rounded,
       color: Color(0xFFF59E0B),
       current: 5.4,
@@ -138,24 +140,24 @@ class _HabitRepository {
 
   static const List<double> scoreWeek = [66, 71, 58, 69, 74, 82, 78];
 
-  static const List<AIInsight> insights = [
+  static final List<AIInsight> insights = [
     AIInsight(
       icon: Icons.nightlight_round,
       color: Color(0xFF6366F1),
-      tag: 'Sleep pattern',
-      text: 'You slept below 6 hours for 3 consecutive days. Try winding down 30 minutes earlier tonight.',
+      tag: AppStrings.sleepInsightTag,
+      text: AppStrings.sleepInsight,
     ),
     AIInsight(
       icon: Icons.trending_up_rounded,
       color: Color(0xFFF59E0B),
-      tag: 'Screen time',
-      text: 'Your screen time increased noticeably this week, especially around exam days.',
+      tag: AppStrings.screenInsightTag,
+      text: AppStrings.screenInsight,
     ),
     AIInsight(
       icon: Icons.self_improvement_rounded,
       color: Color(0xFF10B981),
-      tag: 'Stress & exercise',
-      text: 'Staying consistent with exercise this week helped lower your predicted stress score.',
+      tag: AppStrings.stressInsightTag,
+      text: AppStrings.stressInsight,
     ),
   ];
 
@@ -218,8 +220,8 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
           padding: EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
           child: Container(
             padding: const EdgeInsets.fromLTRB(22, 14, 22, 26),
-            decoration: const BoxDecoration(
-              color: AppColors.card,
+            decoration: BoxDecoration(
+              color: AppPalette.card(context),
               borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
             ),
             child: Column(
@@ -230,7 +232,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                   child: Container(
                     width: 40,
                     height: 4,
-                    decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(4)),
+                    decoration: BoxDecoration(color: AppPalette.border(context), borderRadius: BorderRadius.circular(4)),
                   ),
                 ),
                 const SizedBox(height: 18),
@@ -246,22 +248,22 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                       child: Icon(metric.icon, color: metric.color, size: 22),
                     ),
                     const SizedBox(width: 12),
-                    Text('Log ${metric.title}',
-                        style: const TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.w800)),
+                    Text(AppStrings.logTitle(metric.title),
+                        style: TextStyle(color: AppPalette.textPrimary(context), fontSize: 18, fontWeight: FontWeight.w800)),
                   ],
                 ),
                 const SizedBox(height: 20),
-                AppFieldLabel('Today\'s value (${metric.unit})'),
+                AppFieldLabel(AppStrings.todaysValue(metric.unit)),
                 const SizedBox(height: 10),
                 AppTextField(
                   controller: controller,
-                  hint: 'e.g. ${metric.target}',
+                  hint: AppStrings.egValue(metric.target.toString()),
                   icon: metric.icon,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 ),
                 const SizedBox(height: 20),
                 AppPrimaryButton(
-                  label: 'Save entry',
+                  label: AppStrings.saveEntry,
                   onPressed: () {
                     final v = double.tryParse(controller.text.trim());
                     if (v != null) {
@@ -290,7 +292,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
           children: [
             const Icon(Icons.local_fire_department_rounded, color: Color(0xFFF59E0B), size: 18),
             const SizedBox(width: 8),
-            Text('Checked in! Day ${_HabitRepository.checkInStreak} streak · +10 pts',
+            Text(AppStrings.checkedInStreak(_HabitRepository.checkInStreak),
                 style: const TextStyle(fontWeight: FontWeight.w700)),
           ],
         ),
@@ -304,14 +306,14 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
       children: [
         Container(width: 4, height: 16, decoration: BoxDecoration(color: AppColors.purple, borderRadius: BorderRadius.circular(4))),
         const SizedBox(width: 8),
-        Text(title, style: const TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: -0.2)),
+        Text(title, style: TextStyle(color: AppPalette.textPrimary(context), fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: -0.2)),
         if (leadingIcon != null) ...[
           const SizedBox(width: 6),
           Icon(leadingIcon, size: 15, color: AppColors.purple),
         ],
         if (trailing != null) ...[
           const Spacer(),
-          Text(trailing, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
+          Text(trailing, style: TextStyle(color: AppPalette.textSecondary(context), fontSize: 12, fontWeight: FontWeight.w500)),
         ],
       ],
     );
@@ -325,9 +327,15 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: _HabitRepository.checkedInToday ? null : _buildCheckInButton(),
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Colors.white, Color(0xFFF6F9FF), Colors.white],
+            colors: [
+              AppPalette.card(context),
+              AppPalette.isDark(context)
+                  ? AppPalette.darkBackground
+                  : const Color(0xFFF6F9FF),
+              AppPalette.card(context),
+            ],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
@@ -341,19 +349,19 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
               const SizedBox(height: 18),
               _buildSummaryCard(),
               const SizedBox(height: 24),
-              _sectionTitle('Your Habits'),
+              _sectionTitle(AppStrings.yourHabits),
               const SizedBox(height: 12),
               _buildHabitCardsGrid(),
               const SizedBox(height: 24),
-              _sectionTitle('Habit Streaks', leadingIcon: Icons.local_fire_department_rounded),
+              _sectionTitle(AppStrings.habitStreaks, leadingIcon: Icons.local_fire_department_rounded),
               const SizedBox(height: 12),
               _buildStreakSection(),
               const SizedBox(height: 24),
-              _sectionTitle('Weekly Analytics'),
+              _sectionTitle(AppStrings.weeklyAnalytics),
               const SizedBox(height: 12),
               _buildAnalyticsCard(),
               const SizedBox(height: 24),
-              _sectionTitle('AI Insights', leadingIcon: Icons.auto_awesome_rounded),
+              _sectionTitle(AppStrings.aiInsights, leadingIcon: Icons.auto_awesome_rounded),
               const SizedBox(height: 12),
               _buildInsightsSection(),
             ],
@@ -373,11 +381,11 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Habit Tracker',
-                  style: TextStyle(color: AppColors.textPrimary, fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+              Text(AppStrings.habitPageTitle,
+                  style: TextStyle(color: AppPalette.textPrimary(context), fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
               const SizedBox(height: 4),
-              Text('Small daily habits, a stronger you.',
-                  style: TextStyle(color: AppColors.textSecondary.withValues(alpha: 0.85), fontSize: 13.5)),
+              Text(AppStrings.habitSubtitle,
+                  style: TextStyle(color: AppPalette.textSecondary(context).withValues(alpha: 0.85), fontSize: 13.5)),
             ],
           ),
         ),
@@ -429,7 +437,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text('${_HabitRepository.habitScore}%', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
-                        const Text('Score', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600)),
+                        Text(AppStrings.score, style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600)),
                       ],
                     ),
                   ),
@@ -440,13 +448,11 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text("Today's Habit Summary",
+                    Text(AppStrings.todaysHabitSummary,
                         style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -0.2)),
                     const SizedBox(height: 6),
                     Text(
-                      _HabitRepository.habitScore >= 75
-                          ? 'Great job — you\'re on track today!'
-                          : 'A little more effort keeps your streak alive.',
+                      _HabitRepository.habitScore >= 75 ? AppStrings.onTrackToday : AppStrings.keepStreakAlive,
                       style: const TextStyle(color: Colors.white70, fontSize: 12.5, height: 1.35),
                     ),
                   ],
@@ -457,13 +463,13 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
           const SizedBox(height: 20),
           Row(
             children: [
-              Expanded(child: _summaryChip(Icons.bedtime_rounded, '${sleep.current}h', 'Sleep')),
+              Expanded(child: _summaryChip(Icons.bedtime_rounded, '${sleep.current}h', AppStrings.habitSleep)),
               const SizedBox(width: 10),
-              Expanded(child: _summaryChip(Icons.water_drop_rounded, '${water.current}L', 'Water')),
+              Expanded(child: _summaryChip(Icons.water_drop_rounded, '${water.current}L', AppStrings.habitWater)),
               const SizedBox(width: 10),
-              Expanded(child: _summaryChip(Icons.fitness_center_rounded, '${exercise.current.toInt()}m', 'Exercise')),
+              Expanded(child: _summaryChip(Icons.fitness_center_rounded, '${exercise.current.toInt()}m', AppStrings.habitExercise)),
               const SizedBox(width: 10),
-              Expanded(child: _summaryChip(Icons.smartphone_rounded, '${screen.current}h', 'Screen')),
+              Expanded(child: _summaryChip(Icons.smartphone_rounded, '${screen.current}h', AppStrings.habitScreen)),
             ],
           ),
         ],
@@ -508,11 +514,11 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
     final exercise = _metric(HabitType.exercise);
     return Row(
       children: [
-        Expanded(child: _StreakTile(title: 'Sleep', streak: sleep.streak, color: sleep.color)),
+        Expanded(child: _StreakTile(title: AppStrings.habitSleep, streak: sleep.streak, color: sleep.color)),
         const SizedBox(width: 10),
-        Expanded(child: _StreakTile(title: 'Hydration', streak: water.streak, color: water.color)),
+        Expanded(child: _StreakTile(title: AppStrings.hydration, streak: water.streak, color: water.color)),
         const SizedBox(width: 10),
-        Expanded(child: _StreakTile(title: 'Exercise', streak: exercise.streak, color: exercise.color)),
+        Expanded(child: _StreakTile(title: AppStrings.habitExercise, streak: exercise.streak, color: exercise.color)),
       ],
     );
   }
@@ -520,10 +526,10 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
   // ── 5. Weekly analytics ───────────────────────────────────────────────
   Widget _buildAnalyticsCard() {
     final chips = <(HabitType, String)>[
-      (HabitType.sleep, 'Sleep'),
-      (HabitType.exercise, 'Exercise'),
-      (HabitType.screenTime, 'Screen Time'),
-      (HabitType.score, 'Habit Score'),
+      (HabitType.sleep, AppStrings.habitSleep),
+      (HabitType.exercise, AppStrings.habitExercise),
+      (HabitType.screenTime, AppStrings.habitScreenTime),
+      (HabitType.score, AppStrings.score),
     ];
 
     List<double> values;
@@ -575,12 +581,12 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                       padding: const EdgeInsets.symmetric(horizontal: 14),
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: selected ? AppColors.purple : AppColors.inputFill,
+                        color: selected ? AppColors.purple : AppPalette.inputFill(context),
                         borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: selected ? AppColors.purple : AppColors.border),
+                        border: Border.all(color: selected ? AppColors.purple : AppPalette.border(context)),
                       ),
                       child: Text(chips[i].$2,
-                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? Colors.white : AppColors.textSecondary)),
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? Colors.white : AppPalette.textSecondary(context))),
                     ),
                   );
                 },
@@ -614,7 +620,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                                 : values[i].toStringAsFixed(1),
                             style: TextStyle(
                               fontSize: 9.5,
-                              color: AppColors.textSecondary.withValues(alpha: 0.7),
+                              color: AppPalette.textSecondary(context).withValues(alpha: 0.7),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -640,7 +646,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                           // ── Day label ────────────────────────────────
                           Text(
                             _weekdayLabels[i],
-                            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                            style: TextStyle(fontSize: 11, color: AppPalette.textSecondary(context), fontWeight: FontWeight.w600),
                           ),
                         ],
                       ),
@@ -656,16 +662,16 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                 Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
                 const SizedBox(width: 6),
                 Text(
-                  'This week · avg ${(values.reduce((a, b) => a + b) / values.length).toStringAsFixed(1)} $unit',
-                  style: const TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+                  AppStrings.thisWeekAvg((values.reduce((a, b) => a + b) / values.length).toStringAsFixed(1), unit),
+                  style: TextStyle(fontSize: 11.5, color: AppPalette.textSecondary(context)),
                 ),
                 const Spacer(),
                 const Text('😊', style: TextStyle(fontSize: 12)),
                 const SizedBox(width: 3),
-                const Text('met  ', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                Text(AppStrings.metLabel, style: TextStyle(fontSize: 11, color: AppPalette.textSecondary(context))),
                 const Text('😞', style: TextStyle(fontSize: 12)),
                 const SizedBox(width: 3),
-                const Text('below', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                Text(AppStrings.belowLabel, style: TextStyle(fontSize: 11, color: AppPalette.textSecondary(context))),
               ],
             ),
           ],
@@ -713,7 +719,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                           ],
                         ),
                         const SizedBox(height: 5),
-                        Text(insight.text, style: const TextStyle(fontSize: 13, color: AppColors.textPrimary, height: 1.4)),
+                        Text(insight.text, style: TextStyle(fontSize: 13, color: AppPalette.textPrimary(context), height: 1.4)),
                       ],
                     ),
                   ),
@@ -766,7 +772,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
               Icon(done ? Icons.check_circle_rounded : Icons.local_fire_department_rounded, color: Colors.white, size: 20),
               const SizedBox(width: 8),
               Text(
-                done ? 'Checked in · Day ${_HabitRepository.checkInStreak}' : 'Daily Check-In',
+                done ? AppStrings.checkedInDay(_HabitRepository.checkInStreak) : AppStrings.dailyCheckIn,
                 style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800),
               ),
             ],
@@ -778,18 +784,18 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
 
   // ── Bottom navigation (visual match with rest of the app) ─────────────
   Widget _buildBottomNav() {
-    const tabs = [
-      (Icons.dashboard_outlined, Icons.dashboard_rounded, 'Home'),
-      (Icons.edit_calendar_outlined, Icons.edit_calendar_rounded, 'Planner'),
-      (Icons.local_fire_department_outlined, Icons.local_fire_department_rounded, 'Habits'),
-      (Icons.account_balance_wallet_outlined, Icons.account_balance_wallet_rounded, 'Budget'),
-      (Icons.smart_toy_outlined, Icons.smart_toy_rounded, 'Assistant'),
+    final tabs = [
+      (Icons.dashboard_outlined, Icons.dashboard_rounded, AppStrings.tabHome),
+      (Icons.edit_calendar_outlined, Icons.edit_calendar_rounded, AppStrings.tabPlanner),
+      (Icons.local_fire_department_outlined, Icons.local_fire_department_rounded, AppStrings.tabHabits),
+      (Icons.account_balance_wallet_outlined, Icons.account_balance_wallet_rounded, AppStrings.tabBudget),
+      (Icons.smart_toy_outlined, Icons.smart_toy_rounded, AppStrings.tabAssistant),
     ];
     return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.card,
+      decoration: BoxDecoration(
+        color: AppPalette.card(context),
         border: Border(
-          top: BorderSide(color: AppColors.border, width: 1),
+          top: BorderSide(color: AppPalette.border(context), width: 1),
         ),
         boxShadow: [
           BoxShadow(
@@ -804,7 +810,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
           data: NavigationBarThemeData(
             labelTextStyle: WidgetStateProperty.resolveWith((states) {
               final sel = states.contains(WidgetState.selected);
-              return TextStyle(fontSize: 11, fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: sel ? AppColors.purple : AppColors.textSecondary);
+              return TextStyle(fontSize: 11, fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: sel ? AppColors.purple : AppPalette.textSecondary(context));
             }),
           ),
           child: NavigationBar(
@@ -873,12 +879,12 @@ class _HabitCard extends StatelessWidget {
                   Row(
                     children: [
                       Expanded(
-                        child: Text(metric.title, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                        child: Text(metric.title, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: AppPalette.textPrimary(context))),
                       ),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)),
-                        child: Text(metric.isOnTrack ? 'On track' : 'Needs focus',
+                        child: Text(metric.isOnTrack ? AppStrings.onTrack : AppStrings.needsFocus,
                             style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: statusColor)),
                       ),
                     ],
@@ -890,8 +896,12 @@ class _HabitCard extends StatelessWidget {
                     children: [
                       Text('${metric.current}', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: metric.color)),
                       const SizedBox(width: 3),
-                      Text('${metric.unit} / ${metric.target.toInt()}${metric.unit} goal',
-                          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                      Text(
+                        AppSettings.instance.locale.languageCode == 'bn'
+                            ? '${metric.unit} / ${metric.target.toInt()}${metric.unit} লক্ষ্য'
+                            : '${metric.unit} / ${metric.target.toInt()}${metric.unit} goal',
+                        style: TextStyle(fontSize: 12, color: AppPalette.textSecondary(context)),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -900,12 +910,12 @@ class _HabitCard extends StatelessWidget {
                     child: LinearProgressIndicator(
                       value: metric.progress,
                       minHeight: 7,
-                      backgroundColor: AppColors.inputFill,
+                      backgroundColor: AppPalette.inputFill(context),
                       valueColor: AlwaysStoppedAnimation(metric.color),
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text('$pct% of daily goal', style: TextStyle(fontSize: 11, color: AppColors.textSecondary.withValues(alpha: 0.8))),
+                  Text(AppStrings.dailyGoal(pct), style: TextStyle(fontSize: 11, color: AppPalette.textSecondary(context).withValues(alpha: 0.8))),
                 ],
               ),
             ),
@@ -950,13 +960,13 @@ class _StreakTile extends StatelessWidget {
                 gradient: active
                     ? LinearGradient(colors: [color, color.withValues(alpha: 0.6)], begin: Alignment.topLeft, end: Alignment.bottomRight)
                     : null,
-                color: active ? null : AppColors.inputFill,
+                color: active ? null : AppPalette.inputFill(context),
               ),
-              child: Icon(Icons.local_fire_department_rounded, color: active ? Colors.white : AppColors.textSecondary.withValues(alpha: 0.4), size: 22),
+              child: Icon(Icons.local_fire_department_rounded, color: active ? Colors.white : AppPalette.textSecondary(context).withValues(alpha: 0.4), size: 22),
             ),
             const SizedBox(height: 8),
-            Text('$streak', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-            const Text('day streak', style: TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+            Text('$streak', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppPalette.textPrimary(context))),
+            Text(AppStrings.dayStreak, style: TextStyle(fontSize: 10, color: AppPalette.textSecondary(context))),
             const SizedBox(height: 2),
             Text(title, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: color)),
           ],
@@ -1007,9 +1017,9 @@ class _GlowCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: AppPalette.card(context),
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: AppPalette.border(context)),
         boxShadow: [BoxShadow(color: const Color(0xFF2563EB).withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 6))],
       ),
       child: child,

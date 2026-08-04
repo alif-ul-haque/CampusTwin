@@ -4,6 +4,8 @@ import 'package:campus_twin/register.dart';
 import 'package:campus_twin/app_widget.dart';
 import 'package:campus_twin/twinDashboard.dart';
 import 'package:campus_twin/welcome_page.dart';
+import 'package:campus_twin/l10n.dart';
+import 'package:campus_twin/app_settings.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -34,7 +36,7 @@ class _LoginPageState extends State<LoginPage> {
 
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in all fields')),
+        SnackBar(content: Text(AppStrings.fillAllFields)),
       );
       return;
     }
@@ -74,7 +76,9 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return ListenableBuilder(
+      listenable: AppSettings.instance,
+      builder: (context, _) => Scaffold(
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -117,9 +121,9 @@ class _LoginPageState extends State<LoginPage> {
                                       color: Colors.white.withValues(alpha: 0.22),
                                     ),
                                   ),
-                                  child: const Text(
-                                    'CampusTwin',
-                                    style: TextStyle(
+                                  child: Text(
+                                    AppStrings.brandPill,
+                                    style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 12,
                                       fontWeight: FontWeight.w700,
@@ -142,10 +146,10 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                             ),
                             const SizedBox(height: 18),
-                            const Center(
+                            Center(
                               child: Text(
-                                'Welcome back',
-                                style: TextStyle(
+                                AppStrings.welcomeBack,
+                                style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 27,
                                   fontWeight: FontWeight.w800,
@@ -155,11 +159,11 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                             ),
                             const SizedBox(height: 6),
-                            const Center(
+                            Center(
                               child: Text(
-                                'Sign in to continue your CampusTwin experience.',
+                                AppStrings.signInContinue,
                                 textAlign: TextAlign.center,
-                                style: TextStyle(
+                                style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 13.5,
                                   height: 1.3,
@@ -167,7 +171,7 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                             ),
                             const SizedBox(height: 14),
-                            const Center(
+                            Center(
                               child: Wrap(
                                 alignment: WrapAlignment.center,
                                 spacing: 10,
@@ -175,11 +179,11 @@ class _LoginPageState extends State<LoginPage> {
                                 children: [
                                   AuthFeatureBadge(
                                     icon: Icons.security_outlined,
-                                    label: 'Secure sign in',
+                                    label: AppStrings.secureSignIn,
                                   ),
                                   AuthFeatureBadge(
                                     icon: Icons.auto_awesome_outlined,
-                                    label: 'Personalized setup',
+                                    label: AppStrings.personalizedSetup,
                                   ),
                                 ],
                               ),
@@ -194,27 +198,28 @@ class _LoginPageState extends State<LoginPage> {
                   offset: const Offset(0, -_cardOverlap),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: _buildLoginCard(),
+                    child: _buildLoginCard(context),
                   ),
                 ),
                 const SizedBox(height: 8),
-                _buildRegisterPrompt(),
+                _buildRegisterPrompt(context),
                 const SizedBox(height: 24),
               ],
             ),
           ),
         ),
       ),
+      ),
     );
   }
 
-  Widget _buildLoginCard() {
+  Widget _buildLoginCard(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: AppPalette.card(context),
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: AppPalette.border(context)),
         boxShadow: const [
           BoxShadow(
             color: Color(0x120F172A),
@@ -226,35 +231,35 @@ class _LoginPageState extends State<LoginPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Welcome back',
+          Text(
+            AppStrings.welcomeBack,
             style: TextStyle(
-              color: AppColors.textPrimary,
+              color: AppPalette.textPrimary(context),
               fontSize: 24,
               fontWeight: FontWeight.w800,
               letterSpacing: -0.3,
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
-            'Sign in to continue where your student profile left off.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 14.5),
+          Text(
+            AppStrings.signInCardSubtitle,
+            style: TextStyle(color: AppPalette.textSecondary(context), fontSize: 14.5),
           ),
           const SizedBox(height: 22),
-          const AppFieldLabel('University Email'),
+          AppFieldLabel(AppStrings.universityEmail),
           const SizedBox(height: 10),
           AppTextField(
             controller: _emailController,
-            hint: 'you@university.edu',
+            hint: AppStrings.emailHint,
             icon: Icons.mail_outline,
             keyboardType: TextInputType.emailAddress,
           ),
           const SizedBox(height: 16),
-          const AppFieldLabel('Password'),
+          AppFieldLabel(AppStrings.password),
           const SizedBox(height: 10),
           AppTextField(
             controller: _passwordController,
-            hint: 'Min. 6 characters',
+            hint: AppStrings.passwordHint,
             icon: Icons.lock_outline,
             obscureText: _obscurePassword,
             suffixIcon: IconButton(
@@ -262,7 +267,7 @@ class _LoginPageState extends State<LoginPage> {
                 _obscurePassword
                     ? Icons.visibility_off_outlined
                     : Icons.visibility_outlined,
-                color: AppColors.textSecondary,
+                color: AppPalette.textSecondary(context),
                 size: 20,
               ),
               onPressed: () {
@@ -275,17 +280,17 @@ class _LoginPageState extends State<LoginPage> {
             alignment: Alignment.centerRight,
             child: TextButton(
               onPressed: () {},
-              child: const Text('Forgot password?'),
+              child: Text(AppStrings.forgotPassword),
             ),
           ),
           const SizedBox(height: 22),
           AppPrimaryButton(
-            label: 'Sign In',
+            label: AppStrings.signIn,
             isLoading: _isLoading,
             onPressed: _handleSignIn,
           ),
           const SizedBox(height: 18),
-          _buildDivider(),
+          _buildDivider(context),
           const SizedBox(height: 18),
           AppGoogleButton(onPressed: _handleGoogleSignIn),
         ],
@@ -293,36 +298,36 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildDivider() {
+  Widget _buildDivider(BuildContext context) {
     return Row(
       children: [
-        const Expanded(child: Divider(color: AppColors.border, thickness: 1)),
-        const Padding(
+        Expanded(child: Divider(color: AppPalette.border(context), thickness: 1)),
+        Padding(
           padding: EdgeInsets.symmetric(horizontal: 12),
           child: Text(
-            'or',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            AppStrings.or,
+            style: TextStyle(color: AppPalette.textSecondary(context), fontSize: 13),
           ),
         ),
-        const Expanded(child: Divider(color: AppColors.border, thickness: 1)),
+        Expanded(child: Divider(color: AppPalette.border(context), thickness: 1)),
       ],
     );
   }
 
-  Widget _buildRegisterPrompt() {
+  Widget _buildRegisterPrompt(BuildContext context) {
     return Center(
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Text(
-            "Don't have an account? ",
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+          Text(
+            AppStrings.dontHaveAccount,
+            style: TextStyle(color: AppPalette.textSecondary(context), fontSize: 14),
           ),
           GestureDetector(
             onTap: _goToRegister,
-            child: const Text(
-              'Register',
-              style: TextStyle(
+            child: Text(
+              AppStrings.register,
+              style: const TextStyle(
                 color: AppColors.purple,
                 fontSize: 14,
                 fontWeight: FontWeight.w700,

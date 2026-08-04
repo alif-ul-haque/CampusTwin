@@ -3,6 +3,8 @@ import 'package:campus_twin/theme.dart';
 import 'package:campus_twin/app_widget.dart';
 import 'package:campus_twin/login.dart';
 import 'package:campus_twin/register.dart';
+import 'package:campus_twin/l10n.dart';
+import 'package:campus_twin/app_settings.dart';
 
 /// The very first screen the user sees.
 /// Shows the CampusTwin brand, a short pitch, and lets the user
@@ -73,48 +75,53 @@ class WelcomePage extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 50),
-                            const Text(
-                              'Meet your\ndigital twin.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 40,
-                                fontWeight: FontWeight.w800,
-                                height: 1.2,
-                                letterSpacing: -0.6,
+                            ListenableBuilder(
+                              listenable: AppSettings.instance,
+                              builder: (context, _) => Column(
+                                children: [
+                                  Text(
+                                    AppStrings.heroTitle,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 40,
+                                      fontWeight: FontWeight.w800,
+                                      height: 1.2,
+                                      letterSpacing: -0.6,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 20),
+                                  Text(
+                                    AppStrings.heroBody,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 16,
+                                      height: 1.45,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 26),
+                                  Wrap(
+                                    alignment: WrapAlignment.center,
+                                    spacing: 10,
+                                    runSpacing: 10,
+                                    children: [
+                                      AuthFeatureBadge(
+                                        icon: Icons.auto_awesome_outlined,
+                                        label: AppStrings.aiRecommendations,
+                                      ),
+                                      AuthFeatureBadge(
+                                        icon: Icons.insights_outlined,
+                                        label: AppStrings.stressPrediction,
+                                      ),
+                                      AuthFeatureBadge(
+                                        icon: Icons.calendar_today_outlined,
+                                        label: AppStrings.smartScheduling,
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
-                            ),
-                            const SizedBox(height: 20),
-                            const Text(
-                              'CampusTwin unifies your studies, habits, stress and '
-                              'expenses into one AI-powered system — so it can guide '
-                              'you, not just track you.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 16,
-                                height: 1.45,
-                              ),
-                            ),
-                            const SizedBox(height: 26),
-                            const Wrap(
-                              alignment: WrapAlignment.center,
-                              spacing: 10,
-                              runSpacing: 10,
-                              children: [
-                                AuthFeatureBadge(
-                                  icon: Icons.auto_awesome_outlined,
-                                  label: 'AI recommendations',
-                                ),
-                                AuthFeatureBadge(
-                                  icon: Icons.insights_outlined,
-                                  label: 'Stress prediction',
-                                ),
-                                AuthFeatureBadge(
-                                  icon: Icons.calendar_today_outlined,
-                                  label: 'Smart scheduling',
-                                ),
-                              ],
                             ),
                             const Spacer(),
                             _buildActions(context),
@@ -155,9 +162,9 @@ class WelcomePage extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
               ),
             ),
-            child: const Text(
-              'Sign In',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            child: Text(
+              AppStrings.signIn,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
           ),
         ),
@@ -180,9 +187,9 @@ class WelcomePage extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
               ),
             ),
-            child: const Text(
-              'Create Account',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            child: Text(
+              AppStrings.createAccount,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
           ),
         ),
