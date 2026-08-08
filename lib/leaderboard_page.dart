@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:campus_twin/l10n.dart';
 import 'package:campus_twin/theme.dart';
 
 // =============================================================================
@@ -104,20 +105,20 @@ class _LeaderboardPageState extends State<LeaderboardPage>
     final myRank = sorted.indexWhere((e) => e.id == _meId) + 1;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F9FF),
+      backgroundColor: AppPalette.background(context),
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: AppPalette.background(context),
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-          color: AppColors.textPrimary,
+          color: AppPalette.textPrimary(context),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
-          'Leaderboard',
+        title: Text(
+          AppStrings.leaderboardTitle,
           style: TextStyle(
-            color: AppColors.textPrimary,
+            color: AppPalette.textPrimary(context),
             fontSize: 18,
             fontWeight: FontWeight.w800,
           ),
@@ -131,7 +132,7 @@ class _LeaderboardPageState extends State<LeaderboardPage>
             // ── White header + podium
             _buildHeader(myRank, sorted),
             // ── Tab bar
-            _buildTabBar(),
+            _buildTabBar(context),
             // ── Scrollable list
             Expanded(
               child: _buildList(sorted),
@@ -148,7 +149,7 @@ class _LeaderboardPageState extends State<LeaderboardPage>
     final top3 = sorted.take(3).toList();
     return Container(
       width: double.infinity,
-      color: Colors.white,
+      color: AppPalette.card(context),
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -166,7 +167,7 @@ class _LeaderboardPageState extends State<LeaderboardPage>
               const Icon(Icons.emoji_events_rounded,
                   color: Colors.white, size: 14),
               const SizedBox(width: 5),
-              Text('Rank #$myRank',
+              Text(AppStrings.rankBadge(myRank),
                   style: const TextStyle(
                       color: Colors.white,
                       fontSize: 13,
@@ -184,18 +185,18 @@ class _LeaderboardPageState extends State<LeaderboardPage>
 
   // ── Tab bar ──────────────────────────────────────────────────────────────
 
-  Widget _buildTabBar() {
+  Widget _buildTabBar(BuildContext context) {
     return Container(
-      color: Colors.white,
+      color: AppPalette.card(context),
       child: TabBar(
         controller: _tab,
-        tabs: const [
-          Tab(text: '⭐  Planner'),
-          Tab(text: '🔥  Habits'),
-          Tab(text: '📱  Screen Time'),
+        tabs: [
+          Tab(text: AppStrings.plannerTab),
+          Tab(text: AppStrings.habitsTab),
+          Tab(text: AppStrings.screenTimeTab),
         ],
         labelColor: AppColors.purple,
-        unselectedLabelColor: AppColors.textSecondary,
+        unselectedLabelColor: AppPalette.textSecondary(context),
         labelStyle:
             const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
         unselectedLabelStyle:
@@ -203,7 +204,7 @@ class _LeaderboardPageState extends State<LeaderboardPage>
         indicatorColor: AppColors.purple,
         indicatorWeight: 2.5,
         indicatorSize: TabBarIndicatorSize.label,
-        dividerColor: AppColors.border,
+        dividerColor: AppPalette.border(context),
       ),
     );
   }
@@ -235,7 +236,7 @@ class _Podium extends StatelessWidget {
 
   String _value(LeaderboardEntry e) => switch (cat) {
         LeaderboardCategory.planner => '${e.plannerStars}⭐',
-        LeaderboardCategory.habit => '${e.habitScore} pts',
+        LeaderboardCategory.habit => AppStrings.pts(e.habitScore),
         LeaderboardCategory.screenTime => '${e.screenMinutes}m',
       };
 
@@ -298,14 +299,14 @@ class _Podium extends StatelessWidget {
                 style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: isMe ? AppColors.purple : AppColors.textPrimary),
+                    color: isMe ? AppColors.purple : AppPalette.textPrimary(context)),
               ),
               // Score
               Text(
                 _value(e),
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 10,
-                    color: AppColors.textSecondary,
+                    color: AppPalette.textSecondary(context),
                     fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 4),
@@ -355,9 +356,9 @@ class _LeaderboardRow extends StatelessWidget {
   });
 
   String _value() => switch (cat) {
-        LeaderboardCategory.planner => '${entry.plannerStars} stars',
-        LeaderboardCategory.habit => '${entry.habitScore} pts',
-        LeaderboardCategory.screenTime => '${entry.screenMinutes} min/day',
+        LeaderboardCategory.planner => AppStrings.stars(entry.plannerStars),
+        LeaderboardCategory.habit => AppStrings.pts(entry.habitScore),
+        LeaderboardCategory.screenTime => AppStrings.minPerDay(entry.screenMinutes),
       };
 
   Color _valueColor() => switch (cat) {
@@ -377,7 +378,7 @@ class _LeaderboardRow extends StatelessWidget {
       };
 
   String _scoreSummary() =>
-      '⭐${entry.plannerStars}  🔥${entry.habitScore}pts  📱${entry.screenMinutes}m';
+      AppStrings.streakSummary(entry.plannerStars, entry.habitScore, entry.screenMinutes);
 
   @override
   Widget build(BuildContext context) {
@@ -394,12 +395,12 @@ class _LeaderboardRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: isMe ? AppColors.purple.withValues(alpha: 0.06) : Colors.white,
+          color: isMe ? AppColors.purple.withValues(alpha: 0.06) : AppPalette.card(context),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isMe
                 ? AppColors.purple.withValues(alpha: 0.3)
-                : AppColors.border.withValues(alpha: 0.5),
+                : AppPalette.border(context).withValues(alpha: 0.5),
             width: isMe ? 1.8 : 1,
           ),
           boxShadow: [
@@ -427,7 +428,7 @@ class _LeaderboardRow extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                         color: isMe
                             ? AppColors.purple
-                            : AppColors.textSecondary)),
+                            : AppPalette.textSecondary(context))),
           ),
           const SizedBox(width: 10),
           // Avatar
@@ -469,7 +470,7 @@ class _LeaderboardRow extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                             color: isMe
                                 ? AppColors.purple
-                                : AppColors.textPrimary)),
+                                : AppPalette.textPrimary(context))),
                   ),
                   if (isMe) ...[
                     const SizedBox(width: 6),
@@ -480,8 +481,8 @@ class _LeaderboardRow extends StatelessWidget {
                         color: AppColors.purple.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Text('You',
-                          style: TextStyle(
+                      child: Text(AppStrings.you,
+                          style: const TextStyle(
                               color: AppColors.purple,
                               fontSize: 10,
                               fontWeight: FontWeight.w800)),
@@ -490,8 +491,8 @@ class _LeaderboardRow extends StatelessWidget {
                 ]),
                 const SizedBox(height: 2),
                 Text(_scoreSummary(),
-                    style: const TextStyle(
-                        fontSize: 10.5, color: AppColors.textSecondary)),
+                    style: TextStyle(
+                        fontSize: 10.5, color: AppPalette.textSecondary(context))),
               ],
             ),
           ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:campus_twin/theme.dart';
+import 'package:campus_twin/l10n.dart';
 
 // =============================================================================
 // DATA MODELS
@@ -52,41 +53,41 @@ class BudgetRepository {
   BudgetRepository._();
 
   // ── Student expense categories ───────────────────────────────────────
-  static const expenseCategories = <TxnCategory>[
-    TxnCategory(id: 'food', label: 'Food & Canteen', icon: Icons.restaurant_rounded, color: Color(0xFFF97316), type: TxnType.expense),
-    TxnCategory(id: 'transport', label: 'Transport', icon: Icons.directions_bus_rounded, color: Color(0xFF3B82F6), type: TxnType.expense),
-    TxnCategory(id: 'tuition', label: 'Tuition Fee', icon: Icons.school_rounded, color: Color(0xFF8B5CF6), type: TxnType.expense),
-    TxnCategory(id: 'books', label: 'Books & Notes', icon: Icons.menu_book_rounded, color: Color(0xFF0EA5E9), type: TxnType.expense),
-    TxnCategory(id: 'stationery', label: 'Stationery', icon: Icons.edit_rounded, color: Color(0xFF14B8A6), type: TxnType.expense),
-    TxnCategory(id: 'printing', label: 'Print & Photocopy', icon: Icons.print_rounded, color: Color(0xFF64748B), type: TxnType.expense),
-    TxnCategory(id: 'mobile', label: 'Mobile Recharge', icon: Icons.smartphone_rounded, color: Color(0xFFEC4899), type: TxnType.expense),
-    TxnCategory(id: 'internet', label: 'Internet', icon: Icons.wifi_rounded, color: Color(0xFF6366F1), type: TxnType.expense),
-    TxnCategory(id: 'hostel', label: 'Hostel / Rent', icon: Icons.apartment_rounded, color: Color(0xFFEF4444), type: TxnType.expense),
-    TxnCategory(id: 'exam', label: 'Exam Fee', icon: Icons.assignment_rounded, color: Color(0xFFD946EF), type: TxnType.expense),
-    TxnCategory(id: 'club', label: 'Club & Society', icon: Icons.groups_rounded, color: Color(0xFF22C55E), type: TxnType.expense),
-    TxnCategory(id: 'health', label: 'Health', icon: Icons.local_hospital_rounded, color: Color(0xFFF43F5E), type: TxnType.expense),
-    TxnCategory(id: 'fun', label: 'Entertainment', icon: Icons.sports_esports_rounded, color: Color(0xFFA855F7), type: TxnType.expense),
-    TxnCategory(id: 'shopping', label: 'Shopping', icon: Icons.shopping_bag_rounded, color: Color(0xFFF59E0B), type: TxnType.expense),
-    TxnCategory(id: 'other_exp', label: 'Other', icon: Icons.more_horiz_rounded, color: Color(0xFF94A3B8), type: TxnType.expense),
+  static final expenseCategories = <TxnCategory>[
+    TxnCategory(id: 'food', label: AppStrings.catFood, icon: Icons.restaurant_rounded, color: Color(0xFFF97316), type: TxnType.expense),
+    TxnCategory(id: 'transport', label: AppStrings.catTransport, icon: Icons.directions_bus_rounded, color: Color(0xFF3B82F6), type: TxnType.expense),
+    TxnCategory(id: 'tuition', label: AppStrings.catTuition, icon: Icons.school_rounded, color: Color(0xFF8B5CF6), type: TxnType.expense),
+    TxnCategory(id: 'books', label: AppStrings.catBooks, icon: Icons.menu_book_rounded, color: Color(0xFF0EA5E9), type: TxnType.expense),
+    TxnCategory(id: 'stationery', label: AppStrings.catStationery, icon: Icons.edit_rounded, color: Color(0xFF14B8A6), type: TxnType.expense),
+    TxnCategory(id: 'printing', label: AppStrings.catPrint, icon: Icons.print_rounded, color: Color(0xFF64748B), type: TxnType.expense),
+    TxnCategory(id: 'mobile', label: AppStrings.catRecharge, icon: Icons.smartphone_rounded, color: Color(0xFFEC4899), type: TxnType.expense),
+    TxnCategory(id: 'internet', label: AppStrings.catInternet, icon: Icons.wifi_rounded, color: Color(0xFF6366F1), type: TxnType.expense),
+    TxnCategory(id: 'hostel', label: AppStrings.catHostel, icon: Icons.apartment_rounded, color: Color(0xFFEF4444), type: TxnType.expense),
+    TxnCategory(id: 'exam', label: AppStrings.catExamFee, icon: Icons.assignment_rounded, color: Color(0xFFD946EF), type: TxnType.expense),
+    TxnCategory(id: 'club', label: AppStrings.catClub, icon: Icons.groups_rounded, color: Color(0xFF22C55E), type: TxnType.expense),
+    TxnCategory(id: 'health', label: AppStrings.catHealth, icon: Icons.local_hospital_rounded, color: Color(0xFFF43F5E), type: TxnType.expense),
+    TxnCategory(id: 'fun', label: AppStrings.catEntertainment, icon: Icons.sports_esports_rounded, color: Color(0xFFA855F7), type: TxnType.expense),
+    TxnCategory(id: 'shopping', label: AppStrings.catShopping, icon: Icons.shopping_bag_rounded, color: Color(0xFFF59E0B), type: TxnType.expense),
+    TxnCategory(id: 'other_exp', label: AppStrings.catOther, icon: Icons.more_horiz_rounded, color: Color(0xFF94A3B8), type: TxnType.expense),
   ];
 
   // ── Student income sources ───────────────────────────────────────────
-  static const incomeCategories = <TxnCategory>[
-    TxnCategory(id: 'pocket', label: 'Pocket Money', icon: Icons.family_restroom_rounded, color: Color(0xFF10B981), type: TxnType.income),
-    TxnCategory(id: 'scholarship', label: 'Scholarship', icon: Icons.workspace_premium_rounded, color: Color(0xFF6366F1), type: TxnType.income),
-    TxnCategory(id: 'stipend', label: 'Stipend', icon: Icons.volunteer_activism_rounded, color: Color(0xFF0EA5E9), type: TxnType.income),
-    TxnCategory(id: 'tutoring', label: 'Tutoring', icon: Icons.cast_for_education_rounded, color: Color(0xFF8B5CF6), type: TxnType.income),
-    TxnCategory(id: 'partime', label: 'Part-time Job', icon: Icons.work_rounded, color: Color(0xFF14B8A6), type: TxnType.income),
-    TxnCategory(id: 'freelance', label: 'Freelancing', icon: Icons.laptop_mac_rounded, color: Color(0xFF3B82F6), type: TxnType.income),
-    TxnCategory(id: 'internship', label: 'Internship', icon: Icons.badge_rounded, color: Color(0xFF22C55E), type: TxnType.income),
-    TxnCategory(id: 'award', label: 'Prize / Award', icon: Icons.emoji_events_rounded, color: Color(0xFFF59E0B), type: TxnType.income),
-    TxnCategory(id: 'gift', label: 'Gift', icon: Icons.card_giftcard_rounded, color: Color(0xFFEC4899), type: TxnType.income),
-    TxnCategory(id: 'savings', label: 'Savings', icon: Icons.savings_rounded, color: Color(0xFF0D9488), type: TxnType.income),
-    TxnCategory(id: 'other_inc', label: 'Other', icon: Icons.more_horiz_rounded, color: Color(0xFF94A3B8), type: TxnType.income),
+  static final incomeCategories = <TxnCategory>[
+    TxnCategory(id: 'pocket', label: AppStrings.catPocketMoney, icon: Icons.family_restroom_rounded, color: Color(0xFF10B981), type: TxnType.income),
+    TxnCategory(id: 'scholarship', label: AppStrings.catScholarship, icon: Icons.workspace_premium_rounded, color: Color(0xFF6366F1), type: TxnType.income),
+    TxnCategory(id: 'stipend', label: AppStrings.catStipend, icon: Icons.volunteer_activism_rounded, color: Color(0xFF0EA5E9), type: TxnType.income),
+    TxnCategory(id: 'tutoring', label: AppStrings.catTutoring, icon: Icons.cast_for_education_rounded, color: Color(0xFF8B5CF6), type: TxnType.income),
+    TxnCategory(id: 'partime', label: AppStrings.catPartTime, icon: Icons.work_rounded, color: Color(0xFF14B8A6), type: TxnType.income),
+    TxnCategory(id: 'freelance', label: AppStrings.catFreelancing, icon: Icons.laptop_mac_rounded, color: Color(0xFF3B82F6), type: TxnType.income),
+    TxnCategory(id: 'internship', label: AppStrings.catInternship, icon: Icons.badge_rounded, color: Color(0xFF22C55E), type: TxnType.income),
+    TxnCategory(id: 'award', label: AppStrings.catAward, icon: Icons.emoji_events_rounded, color: Color(0xFFF59E0B), type: TxnType.income),
+    TxnCategory(id: 'gift', label: AppStrings.catGift, icon: Icons.card_giftcard_rounded, color: Color(0xFFEC4899), type: TxnType.income),
+    TxnCategory(id: 'savings', label: AppStrings.catSavings, icon: Icons.savings_rounded, color: Color(0xFF0D9488), type: TxnType.income),
+    TxnCategory(id: 'other_inc', label: AppStrings.catOther, icon: Icons.more_horiz_rounded, color: Color(0xFF94A3B8), type: TxnType.income),
   ];
 
-  static const _fallback = TxnCategory(
-    id: 'other_exp', label: 'Other', icon: Icons.more_horiz_rounded,
+  static final _fallback = TxnCategory(
+    id: 'other_exp', label: AppStrings.catOther, icon: Icons.more_horiz_rounded,
     color: Color(0xFF94A3B8), type: TxnType.expense,
   );
 
@@ -186,10 +187,21 @@ class BudgetRepository {
 // FORMATTING HELPERS
 // =============================================================================
 
-const _months = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
-  'August', 'September', 'October', 'November', 'December'];
-const _monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const _weekdaysShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+final _months = [
+  AppStrings.mnJanuary, AppStrings.mnFebruary, AppStrings.mnMarch,
+  AppStrings.mnApril, AppStrings.mnMayL, AppStrings.mnJune, AppStrings.mnJuly,
+  AppStrings.mnAugust, AppStrings.mnSeptember, AppStrings.mnOctober,
+  AppStrings.mnNovember, AppStrings.mnDecember,
+];
+final _monthsShort = [
+  AppStrings.mnJan, AppStrings.mnFeb, AppStrings.mnMar, AppStrings.mnApr,
+  AppStrings.mnMay, AppStrings.mnJun, AppStrings.mnJul, AppStrings.mnAug,
+  AppStrings.mnSep, AppStrings.mnOct, AppStrings.mnNov, AppStrings.mnDec,
+];
+final _weekdaysShort = [
+  AppStrings.wdMon, AppStrings.wdTue, AppStrings.wdWed, AppStrings.wdThu,
+  AppStrings.wdFri, AppStrings.wdSat, AppStrings.wdSun,
+];
 
 String _money(double v) {
   final rounded = v.abs().round().toString();
@@ -294,7 +306,7 @@ class _BudgetPageState extends State<BudgetPage> {
     if (saved != true || !mounted) return;
     setState(() {});
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(type == TxnType.expense ? 'Expense added' : 'Income added'),
+      content: Text(type == TxnType.expense ? AppStrings.expenseAdded : AppStrings.incomeAdded),
       duration: const Duration(seconds: 2),
     ));
   }
@@ -303,7 +315,7 @@ class _BudgetPageState extends State<BudgetPage> {
     BudgetRepository.remove(t.id);
     setState(() {});
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Transaction deleted'), duration: Duration(seconds: 2)),
+      SnackBar(content: Text(AppStrings.transactionDeleted), duration: const Duration(seconds: 2)),
     );
   }
 
@@ -340,7 +352,7 @@ class _BudgetPageState extends State<BudgetPage> {
             const SizedBox(height: 10),
             _buildDayTransactions(),
             const SizedBox(height: 22),
-            _sectionTitle('Statistics'),
+            _sectionTitle(AppStrings.statistics),
             const SizedBox(height: 10),
             _buildStatistics(),
           ],
@@ -355,16 +367,16 @@ class _BudgetPageState extends State<BudgetPage> {
         Container(width: 4, height: 16, decoration: BoxDecoration(
           color: const Color(0xFF2563EB), borderRadius: BorderRadius.circular(4))),
         const SizedBox(width: 8),
-        Text(title, style: const TextStyle(
-          color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: -0.2)),
+        Text(title, style: TextStyle(
+          color: AppPalette.textPrimary(context), fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: -0.2)),
         if (trailing != null)
           Expanded(
             child: Padding(
               padding: const EdgeInsets.only(left: 10),
               child: Text(trailing, textAlign: TextAlign.right,
                 maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
+                style: TextStyle(
+                  color: AppPalette.textSecondary(context), fontSize: 12, fontWeight: FontWeight.w500)),
             ),
           ),
       ],
@@ -394,13 +406,14 @@ class _BudgetPageState extends State<BudgetPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('${_months[_visibleMonth.month - 1]} ${_visibleMonth.year} · balance',
-                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 11.5)),
+                      Text(AppStrings.balanceCaption(
+                          _months[_visibleMonth.month - 1], '${_visibleMonth.year}'),
+                        style: TextStyle(color: AppPalette.textSecondary(context), fontSize: 11.5)),
                       const SizedBox(height: 1),
                       Text(_money(balance),
                         style: TextStyle(
                           fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.6,
-                          color: balance < 0 ? const Color(0xFFDC2626) : AppColors.textPrimary,
+                          color: balance < 0 ? const Color(0xFFDC2626) : AppPalette.textPrimary(context),
                         )),
                     ],
                   ),
@@ -413,12 +426,12 @@ class _BudgetPageState extends State<BudgetPage> {
             Row(
               children: [
                 Expanded(child: _MiniStat(
-                  icon: Icons.arrow_downward_rounded, label: 'Income',
+                  icon: Icons.arrow_downward_rounded, label: AppStrings.income,
                   value: _money(income), color: const Color(0xFF10B981),
                 )),
                 const SizedBox(width: 8),
                 Expanded(child: _MiniStat(
-                  icon: Icons.arrow_upward_rounded, label: 'Expense',
+                  icon: Icons.arrow_upward_rounded, label: AppStrings.expense,
                   value: _money(expense), color: const Color(0xFFEF4444),
                 )),
               ],
@@ -442,10 +455,10 @@ class _BudgetPageState extends State<BudgetPage> {
                 const SizedBox(width: 10),
                 Text(
                   income == 0
-                      ? 'No income yet'
-                      : '${(spentRatio * 100).toStringAsFixed(0)}% spent',
-                  style: const TextStyle(
-                    color: AppColors.textSecondary, fontSize: 11, fontWeight: FontWeight.w600),
+                      ? AppStrings.noIncomeYet
+                      : AppStrings.spentPercent((spentRatio * 100).round()),
+                  style: TextStyle(
+                    color: AppPalette.textSecondary(context), fontSize: 11, fontWeight: FontWeight.w600),
                 ),
               ],
             ),
@@ -460,7 +473,7 @@ class _BudgetPageState extends State<BudgetPage> {
   Widget _buildTransactionsHeader() {
     final isToday = _isSameDay(_selectedDay, DateTime.now());
     final label = isToday
-        ? 'Today'
+        ? AppStrings.today
         : '${_weekdaysShort[_selectedDay.weekday - 1]}, ${_selectedDay.day} '
           '${_monthsShort[_selectedDay.month - 1]}';
 
@@ -471,17 +484,17 @@ class _BudgetPageState extends State<BudgetPage> {
             Container(width: 4, height: 16, decoration: BoxDecoration(
               color: const Color(0xFF2563EB), borderRadius: BorderRadius.circular(4))),
             const SizedBox(width: 8),
-            const Text('Transactions', style: TextStyle(
-              color: AppColors.textPrimary, fontSize: 16,
+            Text(AppStrings.transactions, style: TextStyle(
+              color: AppPalette.textPrimary(context), fontSize: 16,
               fontWeight: FontWeight.w800, letterSpacing: -0.2)),
             const Spacer(),
             // ‹  Today  ›  — arrows step a day, the label opens the calendar.
             Container(
               padding: const EdgeInsets.all(2),
               decoration: BoxDecoration(
-                color: AppColors.card,
+                color: AppPalette.card(context),
                 borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: AppPalette.border(context)),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -516,7 +529,7 @@ class _BudgetPageState extends State<BudgetPage> {
             alignment: Alignment.centerRight,
             child: GestureDetector(
               onTap: _jumpToToday,
-              child: const Text('Back to today', style: TextStyle(
+              child: Text(AppStrings.backToToday, style: const TextStyle(
                 fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.purple)),
             ),
           ),
@@ -532,7 +545,7 @@ class _BudgetPageState extends State<BudgetPage> {
     if (txns.isEmpty) {
       return _EmptyCard(
         icon: Icons.receipt_long_rounded,
-        message: 'Nothing logged on this day.\nTap + to add an expense or income.',
+        message: AppStrings.nothingLogged,
       );
     }
 
@@ -563,7 +576,7 @@ class _BudgetPageState extends State<BudgetPage> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text('View all ${txns.length} transactions', style: const TextStyle(
+                  Text(AppStrings.viewAllTransactions(txns.length), style: const TextStyle(
                     fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.purple)),
                   const SizedBox(width: 4),
                   const Icon(Icons.arrow_forward_rounded, size: 15, color: AppColors.purple),
@@ -601,8 +614,9 @@ class _BudgetPageState extends State<BudgetPage> {
           income: income,
           expense: expense,
           txns: txns,
-          caption: 'This week · ${monday.day} ${_monthsShort[monday.month - 1]} – '
-              '${monday.add(const Duration(days: 6)).day} ${_monthsShort[monday.add(const Duration(days: 6)).month - 1]}',
+          caption: AppStrings.thisWeekCaption(
+              '${monday.day} ${_monthsShort[monday.month - 1]} – '
+              '${monday.add(const Duration(days: 6)).day} ${_monthsShort[monday.add(const Duration(days: 6)).month - 1]}'),
         );
 
       case StatsRange.monthly:
@@ -648,7 +662,7 @@ class _BudgetPageState extends State<BudgetPage> {
           income: income,
           expense: expense,
           txns: txns,
-          caption: 'Year $year',
+          caption: AppStrings.yearCaption('$year'),
         );
     }
   }
@@ -671,9 +685,9 @@ class _BudgetPageState extends State<BudgetPage> {
               children: StatsRange.values.map((r) {
                 final selected = r == _range;
                 final label = switch (r) {
-                  StatsRange.weekly => 'Weekly',
-                  StatsRange.monthly => 'Monthly',
-                  StatsRange.yearly => 'Yearly',
+                  StatsRange.weekly => AppStrings.weekly,
+                  StatsRange.monthly => AppStrings.monthly,
+                  StatsRange.yearly => AppStrings.yearly,
                 };
                 return Expanded(
                   child: GestureDetector(
@@ -689,7 +703,7 @@ class _BudgetPageState extends State<BudgetPage> {
                       child: Text(label, style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-                        color: selected ? Colors.white : AppColors.textSecondary)),
+                        color: selected ? Colors.white : AppPalette.textSecondary(context))),
                     ),
                   ),
                 );
@@ -722,10 +736,10 @@ class _BudgetPageState extends State<BudgetPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Income vs Expense', style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                          Text(data.caption, style: const TextStyle(
-                            fontSize: 11.5, color: AppColors.textSecondary)),
+                          Text(AppStrings.incomeVsExpense, style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700, color: AppPalette.textPrimary(context))),
+                          Text(data.caption, style: TextStyle(
+                            fontSize: 11.5, color: AppPalette.textSecondary(context))),
                         ],
                       ),
                     ),
@@ -734,9 +748,9 @@ class _BudgetPageState extends State<BudgetPage> {
                 const SizedBox(height: 14),
                 Row(
                   children: [
-                    _LegendDot(color: const Color(0xFF10B981), label: 'Income ${_money(totalIncome)}'),
+                    _LegendDot(color: const Color(0xFF10B981), label: AppStrings.incomeLegend(_money(totalIncome))),
                     const SizedBox(width: 14),
-                    _LegendDot(color: const Color(0xFFEF4444), label: 'Expense ${_money(totalExpense)}'),
+                    _LegendDot(color: const Color(0xFFEF4444), label: AppStrings.expenseLegend(_money(totalExpense))),
                   ],
                 ),
                 const SizedBox(height: 14),
@@ -749,9 +763,9 @@ class _BudgetPageState extends State<BudgetPage> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
-                    color: AppColors.inputFill,
+                    color: AppPalette.inputFill(context),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.border.withValues(alpha: 0.6)),
+                    border: Border.all(color: AppPalette.border(context).withValues(alpha: 0.6)),
                   ),
                   child: Row(
                     children: [
@@ -768,10 +782,10 @@ class _BudgetPageState extends State<BudgetPage> {
                       Expanded(
                         child: Text(
                           totalIncome - totalExpense >= 0
-                              ? 'You saved ${_money(totalIncome - totalExpense)} in this period.'
-                              : 'You overspent by ${_money(totalExpense - totalIncome)} in this period.',
-                          style: const TextStyle(
-                            fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                              ? AppStrings.youSaved(_money(totalIncome - totalExpense))
+                              : AppStrings.youOverspent(_money(totalExpense - totalIncome)),
+                          style: TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w600, color: AppPalette.textPrimary(context)),
                         ),
                       ),
                     ],
@@ -802,9 +816,9 @@ class _BudgetPageState extends State<BudgetPage> {
                       child: const Icon(Icons.pie_chart_rounded, color: Color(0xFF06B6D4), size: 18),
                     ),
                     const SizedBox(width: 10),
-                    const Expanded(
-                      child: Text('By Category', style: TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                    Expanded(
+                      child: Text(AppStrings.byCategory, style: TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w700, color: AppPalette.textPrimary(context))),
                     ),
                     _MiniToggle(
                       selected: _breakdownType,
@@ -818,8 +832,8 @@ class _BudgetPageState extends State<BudgetPage> {
                     padding: const EdgeInsets.symmetric(vertical: 20),
                     child: Center(
                       child: Text(
-                        'No ${_breakdownType == TxnType.expense ? 'expenses' : 'income'} in this period.',
-                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                        _breakdownType == TxnType.expense ? AppStrings.noExpenses : AppStrings.noIncome,
+                        style: TextStyle(color: AppPalette.textSecondary(context), fontSize: 13),
                       ),
                     ),
                   )
@@ -840,13 +854,13 @@ class _BudgetPageState extends State<BudgetPage> {
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(_money(breakdownTotal), style: const TextStyle(
-                                  fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                                Text(_money(breakdownTotal), style: TextStyle(
+                                  fontSize: 13, fontWeight: FontWeight.w800, color: AppPalette.textPrimary(context))),
                                 Text(
-                                  _breakdownType == TxnType.expense ? 'spent' : 'earned',
+                                  _breakdownType == TxnType.expense ? AppStrings.spent : AppStrings.earned,
                                   style: TextStyle(
                                     fontSize: 9,
-                                    color: AppColors.textSecondary.withValues(alpha: 0.7)),
+                                    color: AppPalette.textSecondary(context).withValues(alpha: 0.7)),
                                 ),
                               ],
                             ),
@@ -872,13 +886,13 @@ class _BudgetPageState extends State<BudgetPage> {
                                       Expanded(
                                         child: Text(cat.label,
                                           maxLines: 1, overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontSize: 11.5, fontWeight: FontWeight.w600,
-                                            color: AppColors.textPrimary)),
+                                            color: AppPalette.textPrimary(context))),
                                       ),
-                                      Text('${(pct * 100).round()}%', style: const TextStyle(
+                                      Text('${(pct * 100).round()}%', style: TextStyle(
                                         fontSize: 11.5, fontWeight: FontWeight.w800,
-                                        color: AppColors.textSecondary)),
+                                        color: AppPalette.textSecondary(context))),
                                     ],
                                   ),
                                   const SizedBox(height: 4),
@@ -946,9 +960,9 @@ class _CalendarSheetState extends State<_CalendarSheet> {
     final expense = BudgetRepository.totalOf(monthTxns, TxnType.expense);
 
     return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFFF8FAFF),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      decoration: BoxDecoration(
+        color: AppPalette.background(context),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 20),
       child: SafeArea(
@@ -957,7 +971,7 @@ class _CalendarSheetState extends State<_CalendarSheet> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(width: 40, height: 5, decoration: BoxDecoration(
-              color: AppColors.border, borderRadius: BorderRadius.circular(999))),
+              color: AppPalette.border(context), borderRadius: BorderRadius.circular(999))),
             const SizedBox(height: 14),
             // Month switcher
             Row(
@@ -966,9 +980,9 @@ class _CalendarSheetState extends State<_CalendarSheet> {
                 Expanded(
                   child: Center(
                     child: Text('${_months[_month.month - 1]} ${_month.year}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16, fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary, letterSpacing: -0.2)),
+                        color: AppPalette.textPrimary(context), letterSpacing: -0.2)),
                   ),
                 ),
                 _CalendarArrow(icon: Icons.chevron_right_rounded, onTap: () => _shiftMonth(1)),
@@ -990,7 +1004,7 @@ class _CalendarSheetState extends State<_CalendarSheet> {
                 child: Center(
                   child: Text(d, style: TextStyle(
                     fontSize: 10.5, fontWeight: FontWeight.w700,
-                    color: AppColors.textSecondary.withValues(alpha: 0.65))),
+                    color: AppPalette.textSecondary(context).withValues(alpha: 0.65))),
                 ),
               )).toList(),
             ),
@@ -1022,7 +1036,7 @@ class _CalendarSheetState extends State<_CalendarSheet> {
                 final now = DateTime.now();
                 Navigator.of(context).pop(DateTime(now.year, now.month, now.day));
               },
-              child: const Text('Jump to today'),
+              child: Text(AppStrings.jumpToToday),
             ),
           ],
         ),
@@ -1063,14 +1077,14 @@ class _TxnTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(cat.label, style: const TextStyle(
-                    fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                  Text(cat.label, style: TextStyle(
+                    fontSize: 13.5, fontWeight: FontWeight.w700, color: AppPalette.textPrimary(context))),
                   const SizedBox(height: 2),
                   Text(
-                    txn.note.isEmpty ? (isExpense ? 'Expense' : 'Income source') : txn.note,
+                    txn.note.isEmpty ? (isExpense ? AppStrings.noNoteExpense : AppStrings.noNoteIncome) : txn.note,
                     maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 11.5, color: AppColors.textSecondary.withValues(alpha: 0.85)),
+                      fontSize: 11.5, color: AppPalette.textSecondary(context).withValues(alpha: 0.85)),
                   ),
                 ],
               ),
@@ -1146,15 +1160,15 @@ class _DayTransactionsSheetState extends State<_DayTransactionsSheet> {
       maxChildSize: 0.92,
       expand: false,
       builder: (context, scrollController) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFFF8FAFF),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        decoration: BoxDecoration(
+          color: AppPalette.background(context),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         ),
         child: Column(
           children: [
             const SizedBox(height: 12),
             Container(width: 40, height: 5, decoration: BoxDecoration(
-              color: AppColors.border, borderRadius: BorderRadius.circular(999))),
+              color: AppPalette.border(context), borderRadius: BorderRadius.circular(999))),
             const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 22),
@@ -1167,12 +1181,12 @@ class _DayTransactionsSheetState extends State<_DayTransactionsSheet> {
                         Text(
                           '${_weekdaysShort[widget.day.weekday - 1]}, ${widget.day.day} '
                           '${_monthsShort[widget.day.month - 1]} ${widget.day.year}',
-                          style: const TextStyle(
-                            fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                          style: TextStyle(
+                            fontSize: 17, fontWeight: FontWeight.w800, color: AppPalette.textPrimary(context)),
                         ),
                         const SizedBox(height: 2),
-                        Text('${txns.length} transaction${txns.length == 1 ? '' : 's'}',
-                          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                        Text(AppStrings.dayCount(txns.length),
+                          style: TextStyle(fontSize: 12, color: AppPalette.textSecondary(context))),
                       ],
                     ),
                   ),
@@ -1187,9 +1201,9 @@ class _DayTransactionsSheetState extends State<_DayTransactionsSheet> {
             const SizedBox(height: 14),
             Expanded(
               child: txns.isEmpty
-                  ? const Center(
-                      child: Text('Nothing left on this day.',
-                        style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                  ? Center(
+                      child: Text(AppStrings.nothingLeftOnDay,
+                        style: TextStyle(color: AppPalette.textSecondary(context), fontSize: 13)),
                     )
                   : ListView.separated(
                       controller: scrollController,
@@ -1246,9 +1260,9 @@ class _TypePickerSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFFF8FAFF),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      decoration: BoxDecoration(
+        color: AppPalette.background(context),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
       padding: const EdgeInsets.fromLTRB(22, 12, 22, 28),
       child: SafeArea(
@@ -1257,29 +1271,29 @@ class _TypePickerSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(width: 40, height: 5, decoration: BoxDecoration(
-              color: AppColors.border, borderRadius: BorderRadius.circular(999))),
+              color: AppPalette.border(context), borderRadius: BorderRadius.circular(999))),
             const SizedBox(height: 18),
-            const Text('What do you want to add?', style: TextStyle(
-              fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+            Text(AppStrings.whatToAdd, style: TextStyle(
+              fontSize: 17, fontWeight: FontWeight.w800, color: AppPalette.textPrimary(context))),
             const SizedBox(height: 4),
-            const Text('Track where your money goes and where it comes from.',
+            Text(AppStrings.addTypeSubtitle,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
+              style: TextStyle(fontSize: 12.5, color: AppPalette.textSecondary(context))),
             const SizedBox(height: 20),
             Row(
               children: [
                 Expanded(child: _TypeOption(
                   icon: Icons.arrow_upward_rounded,
-                  title: 'Expense',
-                  subtitle: 'Food, transport, fees…',
+                  title: AppStrings.expense,
+                  subtitle: AppStrings.expenseOption,
                   color: const Color(0xFFEF4444),
                   onTap: () => Navigator.of(context).pop(TxnType.expense),
                 )),
                 const SizedBox(width: 12),
                 Expanded(child: _TypeOption(
                   icon: Icons.arrow_downward_rounded,
-                  title: 'Income Source',
-                  subtitle: 'Pocket money, tutoring…',
+                  title: AppStrings.incomeSource,
+                  subtitle: AppStrings.incomeOption,
                   color: const Color(0xFF10B981),
                   onTap: () => Navigator.of(context).pop(TxnType.income),
                 )),
@@ -1329,8 +1343,8 @@ class _TypeOption extends StatelessWidget {
             Text(title, style: TextStyle(
               fontSize: 14.5, fontWeight: FontWeight.w800, color: color)),
             const SizedBox(height: 2),
-            Text(subtitle, textAlign: TextAlign.center, style: const TextStyle(
-              fontSize: 11, color: AppColors.textSecondary)),
+            Text(subtitle, textAlign: TextAlign.center, style: TextStyle(
+              fontSize: 11, color: AppPalette.textSecondary(context))),
           ],
         ),
       ),
@@ -1384,13 +1398,13 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
   void _save() {
     final amount = double.tryParse(_amountController.text.trim());
     if (amount == null || amount <= 0) {
-      setState(() => _error = 'Enter a valid amount.');
+      setState(() => _error = AppStrings.enterValidAmount);
       return;
     }
     if (_categoryId == null) {
       setState(() => _error = _isExpense
-          ? 'Pick an expense category.'
-          : 'Pick an income source.');
+          ? AppStrings.pickExpenseCategory
+          : AppStrings.pickIncomeSource);
       return;
     }
     BudgetRepository.add(
@@ -1412,9 +1426,9 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
       padding: EdgeInsets.only(bottom: bottomInset),
       child: Container(
         margin: const EdgeInsets.only(top: 40),
-        decoration: const BoxDecoration(
-          color: Color(0xFFF8FAFF),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        decoration: BoxDecoration(
+          color: AppPalette.background(context),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         ),
         child: ListView(
           shrinkWrap: true,
@@ -1422,7 +1436,7 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
           children: [
             Center(
               child: Container(width: 40, height: 5, decoration: BoxDecoration(
-                color: AppColors.border, borderRadius: BorderRadius.circular(999))),
+                color: AppPalette.border(context), borderRadius: BorderRadius.circular(999))),
             ),
             const SizedBox(height: 16),
             Row(
@@ -1438,15 +1452,15 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
                     color: _accent, size: 20),
                 ),
                 const SizedBox(width: 12),
-                Text(_isExpense ? 'Add Expense' : 'Add Income', style: const TextStyle(
-                  fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                Text(_isExpense ? AppStrings.addExpense : AppStrings.addIncome, style: TextStyle(
+                  fontSize: 18, fontWeight: FontWeight.w800, color: AppPalette.textPrimary(context))),
               ],
             ),
             const SizedBox(height: 18),
 
             // Amount
-            const Text('Amount', style: TextStyle(
-              fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+            Text(AppStrings.amount, style: TextStyle(
+              fontSize: 12.5, fontWeight: FontWeight.w700, color: AppPalette.textSecondary(context))),
             const SizedBox(height: 8),
             TextField(
               controller: _amountController,
@@ -1469,8 +1483,8 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
             const SizedBox(height: 18),
 
             // Category
-            Text(_isExpense ? 'Expense category' : 'Income source', style: const TextStyle(
-              fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+            Text(_isExpense ? AppStrings.expenseCategory : AppStrings.incomeSource, style: TextStyle(
+              fontSize: 12.5, fontWeight: FontWeight.w700, color: AppPalette.textSecondary(context))),
             const SizedBox(height: 10),
             Wrap(
               spacing: 8, runSpacing: 8,
@@ -1485,10 +1499,10 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
                     duration: const Duration(milliseconds: 160),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
                     decoration: BoxDecoration(
-                      color: selected ? c.color.withValues(alpha: 0.14) : AppColors.card,
+                      color: selected ? c.color.withValues(alpha: 0.14) : AppPalette.card(context),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: selected ? c.color : AppColors.border,
+                        color: selected ? c.color : AppPalette.border(context),
                         width: selected ? 1.5 : 1,
                       ),
                     ),
@@ -1496,12 +1510,12 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(c.icon, size: 15,
-                          color: selected ? c.color : AppColors.textSecondary),
+                          color: selected ? c.color : AppPalette.textSecondary(context)),
                         const SizedBox(width: 6),
                         Text(c.label, style: TextStyle(
                           fontSize: 12,
                           fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-                          color: selected ? c.color : AppColors.textPrimary)),
+                          color: selected ? c.color : AppPalette.textPrimary(context))),
                       ],
                     ),
                   ),
@@ -1511,31 +1525,31 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
             const SizedBox(height: 18),
 
             // Date
-            const Text('Date', style: TextStyle(
-              fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+            Text(AppStrings.date, style: TextStyle(
+              fontSize: 12.5, fontWeight: FontWeight.w700, color: AppPalette.textSecondary(context))),
             const SizedBox(height: 8),
             GestureDetector(
               onTap: _pickDate,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
                 decoration: BoxDecoration(
-                  color: AppColors.inputFill,
+                  color: AppPalette.inputFill(context),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: AppPalette.border(context)),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.calendar_today_rounded,
-                      size: 16, color: AppColors.textSecondary),
+                    Icon(Icons.calendar_today_rounded,
+                      size: 16, color: AppPalette.textSecondary(context)),
                     const SizedBox(width: 10),
                     Text(
                       '${_weekdaysShort[_date.weekday - 1]}, ${_date.day} '
                       '${_monthsShort[_date.month - 1]} ${_date.year}',
-                      style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                      style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600, color: AppPalette.textPrimary(context)),
                     ),
                     const Spacer(),
-                    const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary, size: 18),
+                    Icon(Icons.chevron_right_rounded, color: AppPalette.textSecondary(context), size: 18),
                   ],
                 ),
               ),
@@ -1543,13 +1557,13 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
             const SizedBox(height: 18),
 
             // Note
-            const Text('Note (optional)', style: TextStyle(
-              fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+            Text(AppStrings.noteOptional, style: TextStyle(
+              fontSize: 12.5, fontWeight: FontWeight.w700, color: AppPalette.textSecondary(context))),
             const SizedBox(height: 8),
             TextField(
               controller: _noteController,
               textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(hintText: 'e.g. Canteen lunch with friends'),
+              decoration: InputDecoration(hintText: AppStrings.noteHint),
             ),
 
             if (_error != null) ...[
@@ -1568,7 +1582,7 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
             ElevatedButton(
               onPressed: _save,
               style: ElevatedButton.styleFrom(backgroundColor: _accent),
-              child: Text(_isExpense ? 'Save Expense' : 'Save Income',
+              child: Text(_isExpense ? AppStrings.saveExpense : AppStrings.saveIncome,
                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
             ),
           ],
@@ -1623,12 +1637,12 @@ class _CalendarButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: AppColors.purple.withValues(alpha: 0.18)),
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.calendar_month_rounded, color: AppColors.purple, size: 18),
-            SizedBox(width: 6),
-            Text('Calendar', style: TextStyle(
+            const Icon(Icons.calendar_month_rounded, color: AppColors.purple, size: 18),
+            const SizedBox(width: 6),
+            Text(AppStrings.calendar, style: const TextStyle(
               fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.purple)),
           ],
         ),
@@ -1650,7 +1664,7 @@ class _StepArrow extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-        child: Icon(icon, size: 18, color: AppColors.textSecondary),
+        child: Icon(icon, size: 18, color: AppPalette.textSecondary(context)),
       ),
     );
   }
@@ -1720,7 +1734,7 @@ class _CalendarCell extends StatelessWidget {
             Text('${day.day}', style: TextStyle(
               fontSize: 12.5,
               fontWeight: isSelected || isToday ? FontWeight.w800 : FontWeight.w600,
-              color: isSelected || isToday ? AppColors.purple : AppColors.textPrimary,
+              color: isSelected || isToday ? AppColors.purple : AppPalette.textPrimary(context),
             )),
             const SizedBox(height: 2),
             // One compact line: spending leads (that's what students watch),
@@ -1787,7 +1801,7 @@ class _MiniStat extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                Text(label, style: TextStyle(fontSize: 11, color: AppPalette.textSecondary(context))),
                 Text(value, maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: color)),
               ],
@@ -1819,7 +1833,7 @@ class _MiniToggle extends StatelessWidget {
           child: Text(label, style: TextStyle(
             fontSize: 11,
             fontWeight: isOn ? FontWeight.w800 : FontWeight.w600,
-            color: isOn ? color : AppColors.textSecondary)),
+            color: isOn ? color : AppPalette.textSecondary(context))),
         ),
       );
     }
@@ -1827,15 +1841,15 @@ class _MiniToggle extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: AppColors.inputFill,
+        color: AppPalette.inputFill(context),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.border.withValues(alpha: 0.6)),
+        border: Border.all(color: AppPalette.border(context).withValues(alpha: 0.6)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          chip(TxnType.expense, 'Expense', const Color(0xFFEF4444)),
-          chip(TxnType.income, 'Income', const Color(0xFF10B981)),
+          chip(TxnType.expense, AppStrings.expense, const Color(0xFFEF4444)),
+          chip(TxnType.income, AppStrings.income, const Color(0xFF10B981)),
         ],
       ),
     );
@@ -1855,8 +1869,8 @@ class _LegendDot extends StatelessWidget {
         Container(width: 9, height: 9, decoration: BoxDecoration(
           color: color, borderRadius: BorderRadius.circular(3))),
         const SizedBox(width: 6),
-        Text(label, style: const TextStyle(
-          fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+        Text(label, style: TextStyle(
+          fontSize: 11.5, fontWeight: FontWeight.w600, color: AppPalette.textSecondary(context))),
       ],
     );
   }
@@ -1899,7 +1913,7 @@ class _GroupedBarChart extends StatelessWidget {
           const SizedBox(height: 6),
           Text(labels[i], style: TextStyle(
             fontSize: 9.5, fontWeight: FontWeight.w600,
-            color: AppColors.textSecondary.withValues(alpha: 0.75))),
+            color: AppPalette.textSecondary(context).withValues(alpha: 0.75))),
         ],
       );
     }
@@ -1969,10 +1983,10 @@ class _EmptyCard extends StatelessWidget {
         alignment: Alignment.center,
         child: Column(
           children: [
-            Icon(icon, size: 32, color: AppColors.textSecondary.withValues(alpha: 0.3)),
+            Icon(icon, size: 32, color: AppPalette.textSecondary(context).withValues(alpha: 0.3)),
             const SizedBox(height: 8),
             Text(message, textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+              style: TextStyle(color: AppPalette.textSecondary(context), fontSize: 13)),
           ],
         ),
       ),
@@ -2031,7 +2045,7 @@ class _GlowCard extends StatelessWidget {
           padding: EdgeInsets.all(strokeWidth),
           child: ClipRRect(
             borderRadius: BorderRadius.circular((radius - strokeWidth).clamp(0, radius)),
-            child: ColoredBox(color: AppColors.card, child: child),
+            child: ColoredBox(color: AppPalette.card(context), child: child),
           ),
         ),
       ),

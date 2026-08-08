@@ -10,8 +10,8 @@ class AppFieldLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: const TextStyle(
-        color: AppColors.textSecondary,
+      style: TextStyle(
+        color: AppPalette.textSecondary(context),
         fontSize: 13,
         fontWeight: FontWeight.w500,
       ),
@@ -44,32 +44,32 @@ class AppTextField extends StatelessWidget {
       controller: controller,
       obscureText: obscureText,
       keyboardType: keyboardType,
-      style: const TextStyle(color: AppColors.textPrimary, fontSize: 15),
+      style: TextStyle(color: AppPalette.textPrimary(context), fontSize: 15),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(
-          color: AppColors.textSecondary,
+        hintStyle: TextStyle(
+          color: AppPalette.textSecondary(context),
           fontSize: 14,
         ),
         prefixIcon: Padding(
           padding: const EdgeInsetsDirectional.only(start: 16, end: 12),
-          child: Icon(icon, color: AppColors.textSecondary, size: 20),
+          child: Icon(icon, color: AppPalette.textSecondary(context), size: 20),
         ),
         prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
         suffixIcon: suffixIcon,
         filled: true,
-        fillColor: AppColors.inputFill,
+        fillColor: AppPalette.inputFill(context),
         contentPadding: const EdgeInsets.symmetric(
           vertical: 18,
           horizontal: 16,
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: AppPalette.border(context)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: AppPalette.border(context)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
@@ -144,7 +144,7 @@ class AppGoogleButton extends StatelessWidget {
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
           backgroundColor: Colors.white,
-          side: const BorderSide(color: AppColors.border),
+          side: BorderSide(color: AppPalette.border(context)),
           shadowColor: const Color(0x12000000),
           elevation: 0,
           minimumSize: const Size.fromHeight(54),
@@ -154,8 +154,8 @@ class AppGoogleButton extends StatelessWidget {
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Text(
+          children: [
+            const Text(
               'G',
               style: TextStyle(
                 color: Color(0xFF4285F4),
@@ -163,11 +163,11 @@ class AppGoogleButton extends StatelessWidget {
                 fontSize: 18,
               ),
             ),
-            SizedBox(width: 10),
+            const SizedBox(width: 10),
             Text(
               'Continue with Google',
               style: TextStyle(
-                color: AppColors.textPrimary,
+                color: AppPalette.textPrimary(context),
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
               ),

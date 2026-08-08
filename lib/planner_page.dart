@@ -1,3 +1,5 @@
+import 'package:campus_twin/app_settings.dart';
+import 'package:campus_twin/l10n.dart';
 import 'package:campus_twin/theme.dart';
 import 'package:flutter/material.dart';
 
@@ -18,17 +20,24 @@ abstract class PlannerRepository {
 }
 
 enum PlannerTaskType {
-  study('study', 'Study', Icons.menu_book_rounded),
-  assignment('assignment', 'Assignment', Icons.assignment_rounded),
-  revision('revision', 'Revision', Icons.replay_rounded),
-  classSession('class', 'Class', Icons.school_rounded),
-  examPrep('exam_prep', 'Exam prep', Icons.fact_check_rounded);
+  study('study', Icons.menu_book_rounded),
+  assignment('assignment', Icons.assignment_rounded),
+  revision('revision', Icons.replay_rounded),
+  classSession('class', Icons.school_rounded),
+  examPrep('exam_prep', Icons.fact_check_rounded);
 
-  const PlannerTaskType(this.apiValue, this.label, this.icon);
+  const PlannerTaskType(this.apiValue, this.icon);
 
   final String apiValue;
-  final String label;
   final IconData icon;
+
+  String get label => switch (this) {
+    PlannerTaskType.study => AppStrings.typeStudy,
+    PlannerTaskType.assignment => AppStrings.typeAssignment,
+    PlannerTaskType.revision => AppStrings.typeRevision,
+    PlannerTaskType.classSession => AppStrings.typeClass,
+    PlannerTaskType.examPrep => AppStrings.typeExamPrep,
+  };
 
   static PlannerTaskType fromApi(String? value) {
     return values.firstWhere(
@@ -192,9 +201,12 @@ class PlannerConflictException implements Exception {
 }
 
 class PlannerReadOnlyException implements Exception {
-  const PlannerReadOnlyException([
-    this.message = 'Tasks from a past date are read-only.',
-  ]);
+  PlannerReadOnlyException([
+    String? message,
+  ]) : message = message ??
+            (AppSettings.instance.locale.languageCode == 'bn'
+                ? 'পেছনের তারিখের কাজগুলো কেবল পড়া যায়।'
+                : 'Tasks from a past date are read-only.');
 
   final String message;
 }
@@ -204,38 +216,38 @@ class MockPlannerRepository implements PlannerRepository {
 
   static final MockPlannerRepository instance = MockPlannerRepository._();
 
-  final List<PlannerSubject> _subjects = const [
+  final List<PlannerSubject> _subjects = [
     PlannerSubject(
       id: 's1',
-      name: 'Database Systems',
+      name: AppStrings.subDb,
       code: 'CSE301',
       colorValue: 0xFF4F46E5,
       weeklyTargetMinutes: 360,
     ),
     PlannerSubject(
       id: 's2',
-      name: 'Data Mining',
+      name: AppStrings.subDm,
       code: 'CSE402',
       colorValue: 0xFF0891B2,
       weeklyTargetMinutes: 300,
     ),
     PlannerSubject(
       id: 's3',
-      name: 'Machine Learning',
+      name: AppStrings.subMl,
       code: 'CSE501',
       colorValue: 0xFFD97706,
       weeklyTargetMinutes: 360,
     ),
     PlannerSubject(
       id: 's4',
-      name: 'Software Engineering',
+      name: AppStrings.subSe,
       code: 'CSE303',
       colorValue: 0xFF059669,
       weeklyTargetMinutes: 240,
     ),
     PlannerSubject(
       id: 's5',
-      name: 'Computer Networks',
+      name: AppStrings.subCn,
       code: 'CSE302',
       colorValue: 0xFF2563EB,
       weeklyTargetMinutes: 240,
@@ -253,27 +265,27 @@ class MockPlannerRepository implements PlannerRepository {
     _tasks.addAll([
       _task(
         '1',
-        'Review database normalization',
+        AppStrings.mockTask1,
         monday,
         9 * 60,
         10 * 60,
         PlannerTaskType.revision,
         's1',
-        note: 'Focus on 3NF and BCNF examples.',
+        note: AppStrings.mockTask1Note,
       ),
       _task(
         '2',
-        'Data mining practice',
+        AppStrings.mockTask2,
         monday,
         11 * 60 + 30,
         13 * 60,
         PlannerTaskType.study,
         's2',
-        note: 'Complete two clustering problems.',
+        note: AppStrings.mockTask2Note,
       ),
       _task(
         '3',
-        'ML assignment sprint',
+        AppStrings.mockTask3,
         monday.add(const Duration(days: 1)),
         15 * 60,
         16 * 60 + 30,
@@ -282,7 +294,7 @@ class MockPlannerRepository implements PlannerRepository {
       ),
       _task(
         '4',
-        'Networks quiz preparation',
+        AppStrings.mockTask4,
         monday.add(const Duration(days: 2)),
         19 * 60,
         20 * 60,
@@ -291,7 +303,7 @@ class MockPlannerRepository implements PlannerRepository {
       ),
       _task(
         '5',
-        'Software project meeting',
+        AppStrings.mockTask5,
         monday.add(const Duration(days: 3)),
         14 * 60,
         15 * 60,
@@ -300,7 +312,7 @@ class MockPlannerRepository implements PlannerRepository {
       ),
       _task(
         '6',
-        'Weekly course review',
+        AppStrings.mockTask6,
         monday.add(const Duration(days: 4)),
         16 * 60,
         17 * 60,
@@ -395,20 +407,26 @@ class MockPlannerRepository implements PlannerRepository {
 
   void _validateDraft(StudyBlockDraft draft) {
     if (draft.title.trim().isEmpty || draft.title.trim().length > 80) {
-      throw const FormatException(
-        'Task title must contain 1 to 80 characters.',
+      throw FormatException(
+        AppSettings.instance.locale.languageCode == 'bn'
+            ? 'কাজের শিরোনামে ১ থেকে ৮০ অক্ষর থাকতে হবে।'
+            : 'Task title must contain 1 to 80 characters.',
       );
     }
     if (draft.startMinute < 0 ||
         draft.endMinute > 24 * 60 ||
         draft.endMinute - draft.startMinute < 5) {
-      throw const FormatException(
-        'Choose a valid time range of at least 5 minutes.',
+      throw FormatException(
+        AppSettings.instance.locale.languageCode == 'bn'
+            ? 'কমপক্ষে ৫ মিনিটের একটি সঠিক সময়সীমা বেছে নিন।'
+            : 'Choose a valid time range of at least 5 minutes.',
       );
     }
     if (_dateOnly(draft.date).isBefore(_dateOnly(DateTime.now()))) {
-      throw const PlannerReadOnlyException(
-        'You cannot add a task to a date that has already passed.',
+      throw PlannerReadOnlyException(
+        AppSettings.instance.locale.languageCode == 'bn'
+            ? 'যে তারিখটি পেরিয়ে গেছে সেখানে কাজ যোগ করা যাবে না।'
+            : 'You cannot add a task to a date that has already passed.',
       );
     }
     final overlaps = _tasks.any(
@@ -418,8 +436,10 @@ class MockPlannerRepository implements PlannerRepository {
           draft.endMinute > task.startMinute,
     );
     if (overlaps) {
-      throw const PlannerConflictException(
-        'This time overlaps another task. Choose a free time.',
+      throw PlannerConflictException(
+        AppSettings.instance.locale.languageCode == 'bn'
+            ? 'এই সময়টি অন্য একটি কাজের সাথে মিলে যায়। একটি ফাঁকা সময় বেছে নিন।'
+            : 'This time overlaps another task. Choose a free time.',
       );
     }
   }
@@ -428,9 +448,15 @@ class MockPlannerRepository implements PlannerRepository {
   Future<StudyBlock> setCompleted(String id, bool completed) async {
     await _latency();
     final index = _tasks.indexWhere((task) => task.id == id);
-    if (index < 0) throw StateError('Task no longer exists.');
+    if (index < 0) {
+      throw StateError(
+        AppSettings.instance.locale.languageCode == 'bn'
+            ? 'কাজটি আর নেই।'
+            : 'Task no longer exists.',
+      );
+    }
     if (_tasks[index].date.isBefore(_dateOnly(DateTime.now()))) {
-      throw const PlannerReadOnlyException();
+      throw PlannerReadOnlyException();
     }
     _tasks[index] = _tasks[index].copyWith(completed: completed);
     return _tasks[index];
@@ -440,9 +466,15 @@ class MockPlannerRepository implements PlannerRepository {
   Future<void> deleteTask(String id) async {
     await _latency();
     final index = _tasks.indexWhere((task) => task.id == id);
-    if (index < 0) throw StateError('Task no longer exists.');
+    if (index < 0) {
+      throw StateError(
+        AppSettings.instance.locale.languageCode == 'bn'
+            ? 'কাজটি আর নেই।'
+            : 'Task no longer exists.',
+      );
+    }
     if (_tasks[index].date.isBefore(_dateOnly(DateTime.now()))) {
-      throw const PlannerReadOnlyException();
+      throw PlannerReadOnlyException();
     }
     _tasks.removeAt(index);
   }
@@ -453,7 +485,7 @@ class MockPlannerRepository implements PlannerRepository {
     await Future<void>.delayed(const Duration(milliseconds: 650));
     final suggestions = [
       StudyBlockDraft(
-        title: 'Focused course review',
+        title: AppStrings.mockGenTask1,
         date: weekStart.add(const Duration(days: 1)),
         startMinute: 9 * 60,
         endMinute: 10 * 60,
@@ -461,7 +493,7 @@ class MockPlannerRepository implements PlannerRepository {
         subjectId: _subjects.first.id,
       ),
       StudyBlockDraft(
-        title: 'Practice and recall',
+        title: AppStrings.mockGenTask2,
         date: weekStart.add(const Duration(days: 5)),
         startMinute: 10 * 60,
         endMinute: 11 * 60,
@@ -485,7 +517,7 @@ class MockPlannerRepository implements PlannerRepository {
             subjectId: subject?.id,
             subjectName: subject?.name,
             subjectCode: subject?.code,
-            note: 'Suggested from your course load and available time.',
+            note: AppStrings.mockGenNote,
           ),
         );
       } on PlannerConflictException {
@@ -543,8 +575,7 @@ class _PlannerPageState extends State<PlannerPage> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error =
-            'We could not load your planner. Check your connection and try again.';
+        _error = AppStrings.couldNotLoad;
         _loading = false;
       });
     }
@@ -590,7 +621,7 @@ class _PlannerPageState extends State<PlannerPage> {
 
   Future<void> _toggleTask(StudyBlock task) async {
     if (task.date.isBefore(_dateOnly(DateTime.now()))) {
-      _showMessage('Past tasks are read-only.');
+      _showMessage(AppStrings.pastTasksReadOnly);
       return;
     }
     final index = _tasks.indexWhere((item) => item.id == task.id);
@@ -611,13 +642,13 @@ class _PlannerPageState extends State<PlannerPage> {
         if (current >= 0) copy[current] = previous;
         _tasks = copy;
       });
-      _showMessage('Could not update this task. Please try again.');
+      _showMessage(AppStrings.couldNotUpdate);
     }
   }
 
   Future<void> _openAddTask() async {
     if (_selectedDateIsPast) {
-      _showMessage('Choose today or a future date to add a task.');
+      _showMessage(AppStrings.chooseTodayOrFuture);
       return;
     }
     final created = await showModalBottomSheet<StudyBlock>(
@@ -644,7 +675,7 @@ class _PlannerPageState extends State<PlannerPage> {
         _selectedDate = created.date;
       });
     }
-    _showMessage('Task added to your planner.');
+    _showMessage(AppStrings.taskAdded);
   }
 
   Future<void> _openDetails(StudyBlock task) async {
@@ -668,26 +699,26 @@ class _PlannerPageState extends State<PlannerPage> {
 
   Future<void> _deleteTask(StudyBlock task) async {
     if (task.date.isBefore(_dateOnly(DateTime.now()))) {
-      _showMessage('Past tasks are read-only and cannot be deleted.');
+      _showMessage(AppStrings.pastTasksReadOnlyDelete);
       return;
     }
     final confirmed =
         await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('Delete task?'),
-            content: Text('“${task.title}” will be permanently removed.'),
+            title: Text(AppStrings.deleteTaskQuestion),
+            content: Text(AppStrings.deleteTaskBody(task.title)),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel'),
+                child: Text(AppStrings.cancel),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context, true),
                 style: TextButton.styleFrom(
                   foregroundColor: const Color(0xFFDC2626),
                 ),
-                child: const Text('Delete'),
+                child: Text(AppStrings.delete),
               ),
             ],
           ),
@@ -700,10 +731,10 @@ class _PlannerPageState extends State<PlannerPage> {
       setState(
         () => _tasks = _tasks.where((item) => item.id != task.id).toList(),
       );
-      _showMessage('Task deleted.');
+      _showMessage(AppStrings.taskDeleted);
     } catch (_) {
       if (mounted) {
-        _showMessage('Could not delete this task. Please try again.');
+        _showMessage(AppStrings.couldNotDelete);
       }
     }
   }
@@ -711,7 +742,7 @@ class _PlannerPageState extends State<PlannerPage> {
   Future<void> _generatePlan() async {
     if (_generating) return;
     if (_weekIsPast) {
-      _showMessage('Past weeks are read-only.');
+      _showMessage(AppStrings.pastWeeksReadOnly);
       return;
     }
     if (_tasks.isNotEmpty) {
@@ -719,18 +750,16 @@ class _PlannerPageState extends State<PlannerPage> {
           await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
-              title: const Text('Add smart suggestions?'),
-              content: const Text(
-                'CampusTwin will fill available time only. Your existing tasks will stay unchanged.',
-              ),
+              title: Text(AppStrings.addSmartSuggestions),
+              content: Text(AppStrings.smartSuggestionsBody),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Not now'),
+                  child: Text(AppStrings.notNow),
                 ),
                 FilledButton(
                   onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Add suggestions'),
+                  child: Text(AppStrings.addSuggestions),
                 ),
               ],
             ),
@@ -743,9 +772,9 @@ class _PlannerPageState extends State<PlannerPage> {
       final tasks = await _repository.generateWeek(_weekStart);
       if (!mounted) return;
       setState(() => _tasks = tasks);
-      _showMessage('Your week has been updated with available study blocks.');
+      _showMessage(AppStrings.weekUpdated);
     } catch (_) {
-      if (mounted) _showMessage('Could not generate suggestions right now.');
+      if (mounted) _showMessage(AppStrings.couldNotGenerate);
     } finally {
       if (mounted) setState(() => _generating = false);
     }
@@ -794,22 +823,22 @@ class _PlannerPageState extends State<PlannerPage> {
   }
 
   Widget _buildTitle() {
-    return const Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Study planner',
+          AppStrings.plannerTitle,
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.w800,
-            color: AppColors.textPrimary,
+            color: AppPalette.textPrimary(context),
             letterSpacing: -0.5,
           ),
         ),
-        SizedBox(height: 3),
+        const SizedBox(height: 3),
         Text(
-          'Plan clearly. Study consistently.',
-          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          AppStrings.plannerSubtitle,
+          style: TextStyle(fontSize: 13, color: AppPalette.textSecondary(context)),
         ),
       ],
     );
@@ -823,7 +852,7 @@ class _PlannerPageState extends State<PlannerPage> {
       child: Row(
         children: [
           IconButton(
-            tooltip: 'Previous week',
+            tooltip: AppStrings.previousWeek,
             onPressed: () => _changeWeek(-1),
             icon: const Icon(Icons.chevron_left_rounded),
           ),
@@ -833,36 +862,36 @@ class _PlannerPageState extends State<PlannerPage> {
                 Text(
                   _weekRange(_weekStart, end),
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
+                    color: AppPalette.textPrimary(context),
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   isCurrent
-                      ? 'Current week'
-                      : 'Week ${_isoWeekNumber(_weekStart)}',
-                  style: const TextStyle(
+                      ? AppStrings.currentWeek
+                      : '${AppSettings.instance.locale.languageCode == 'bn' ? 'সপ্তাহ' : 'Week'} ${_isoWeekNumber(_weekStart)}',
+                  style: TextStyle(
                     fontSize: 11.5,
-                    color: AppColors.textSecondary,
+                    color: AppPalette.textSecondary(context),
                   ),
                 ),
               ],
             ),
           ),
           if (!isCurrent)
-            TextButton(onPressed: _goToToday, child: const Text('Today'))
+            TextButton(onPressed: _goToToday, child: Text(AppStrings.today))
           else
             IconButton(
-              tooltip: 'Next week',
+              tooltip: AppStrings.nextWeek,
               onPressed: () => _changeWeek(1),
               icon: const Icon(Icons.chevron_right_rounded),
             ),
           if (!isCurrent)
             IconButton(
-              tooltip: 'Next week',
+              tooltip: AppStrings.nextWeek,
               onPressed: () => _changeWeek(1),
               icon: const Icon(Icons.chevron_right_rounded),
             ),
@@ -898,12 +927,12 @@ class _PlannerPageState extends State<PlannerPage> {
                 decoration: BoxDecoration(
                   color: selected
                       ? (isPast ? const Color(0xFFE2E8F0) : AppColors.purple)
-                      : (isPast ? const Color(0xFFF1F5F9) : AppColors.card),
+                      : (isPast ? const Color(0xFFF1F5F9) : AppPalette.card(context)),
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(
                     color: isPast
                         ? const Color(0xFFCBD5E1)
-                        : (selected ? AppColors.purple : AppColors.border),
+                        : (selected ? AppColors.purple : AppPalette.border(context)),
                   ),
                   boxShadow: selected && !isPast
                       ? [
@@ -924,7 +953,7 @@ class _PlannerPageState extends State<PlannerPage> {
                         fontWeight: FontWeight.w600,
                         color: selected && !isPast
                             ? Colors.white70
-                            : AppColors.textSecondary,
+                            : AppPalette.textSecondary(context),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -936,8 +965,8 @@ class _PlannerPageState extends State<PlannerPage> {
                         color: selected && !isPast
                             ? Colors.white
                             : (isPast
-                                  ? AppColors.textSecondary
-                                  : AppColors.textPrimary),
+                                  ? AppPalette.textSecondary(context)
+                                  : AppPalette.textPrimary(context)),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -945,7 +974,7 @@ class _PlannerPageState extends State<PlannerPage> {
                       Icon(
                         Icons.lock_outline_rounded,
                         size: 9,
-                        color: AppColors.textSecondary,
+                        color: AppPalette.textSecondary(context),
                       )
                     else
                       Container(
@@ -996,17 +1025,17 @@ class _PlannerPageState extends State<PlannerPage> {
                     CircularProgressIndicator(
                       value: progress,
                       strokeWidth: 7,
-                      backgroundColor: AppColors.inputFill,
+                      backgroundColor: AppPalette.inputFill(context),
                       color: const Color(0xFF10B981),
                       strokeCap: StrokeCap.round,
                     ),
                     Center(
                       child: Text(
                         '${(progress * 100).round()}%',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w800,
-                          color: AppColors.textPrimary,
+                          color: AppPalette.textPrimary(context),
                         ),
                       ),
                     ),
@@ -1018,22 +1047,25 @@ class _PlannerPageState extends State<PlannerPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Weekly progress',
+                    Text(
+                      AppStrings.weeklyProgress,
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
+                        color: AppPalette.textPrimary(context),
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       totalMinutes == 0
-                          ? 'Add a task to start your week.'
-                          : '$completedTasks of ${_tasks.length} tasks completed',
-                      style: const TextStyle(
+                          ? AppStrings.overviewEmpty
+                          : AppStrings.tasksCompleted(
+                              completedTasks,
+                              _tasks.length,
+                            ),
+                      style: TextStyle(
                         fontSize: 12.5,
-                        color: AppColors.textSecondary,
+                        color: AppPalette.textSecondary(context),
                       ),
                     ),
                   ],
@@ -1047,7 +1079,7 @@ class _PlannerPageState extends State<PlannerPage> {
               Expanded(
                 child: _Metric(
                   icon: Icons.schedule_rounded,
-                  label: 'Planned',
+                  label: AppStrings.planned,
                   value: _durationLabel(totalMinutes),
                   color: AppColors.purple,
                 ),
@@ -1056,7 +1088,7 @@ class _PlannerPageState extends State<PlannerPage> {
               Expanded(
                 child: _Metric(
                   icon: Icons.task_alt_rounded,
-                  label: 'Completed',
+                  label: AppStrings.completed,
                   value: _durationLabel(completedMinutes),
                   color: const Color(0xFF059669),
                 ),
@@ -1065,7 +1097,7 @@ class _PlannerPageState extends State<PlannerPage> {
               Expanded(
                 child: _Metric(
                   icon: Icons.pending_actions_rounded,
-                  label: 'Remaining',
+                  label: AppStrings.remaining,
                   value: '${_tasks.length - completedTasks}',
                   color: const Color(0xFFD97706),
                 ),
@@ -1084,19 +1116,19 @@ class _PlannerPageState extends State<PlannerPage> {
         Expanded(
           child: _SectionTitle(
             title: today
-                ? 'Today’s plan'
-                : '${_weekdayLong(_selectedDate.weekday)}’s plan',
+                ? AppStrings.todaysPlan
+                : '${_weekdayLong(_selectedDate.weekday)}${AppSettings.instance.locale.languageCode == 'bn' ? 'ের পরিকল্পনা' : "'s plan"}',
           ),
         ),
         if (_selectedDateIsPast)
-          const Row(
+          Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.lock_outline_rounded, size: 14),
-              SizedBox(width: 4),
+              const Icon(Icons.lock_outline_rounded, size: 14),
+              const SizedBox(width: 4),
               Text(
-                'Read-only',
-                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                AppStrings.readOnly,
+                style: TextStyle(fontSize: 12, color: AppPalette.textSecondary(context)),
               ),
             ],
           )
@@ -1104,7 +1136,7 @@ class _PlannerPageState extends State<PlannerPage> {
           FilledButton.icon(
             onPressed: _openAddTask,
             icon: const Icon(Icons.add_rounded, size: 17),
-            label: const Text('New task'),
+            label: Text(AppStrings.newTask),
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.purple,
               foregroundColor: Colors.white,
@@ -1141,24 +1173,22 @@ class _PlannerPageState extends State<PlannerPage> {
             ),
             const SizedBox(height: 12),
             Text(
-              _selectedDateIsPast
-                  ? 'No tasks were planned'
-                  : 'No tasks planned',
-              style: const TextStyle(
+              AppStrings.noTasksPlanned,
+              style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary,
+                color: AppPalette.textPrimary(context),
               ),
             ),
             const SizedBox(height: 5),
             Text(
               _selectedDateIsPast
-                  ? 'This date has passed and is now read-only.'
-                  : 'Keep this time free or add a focused study block.',
+                  ? AppStrings.pastDateReadOnly
+                  : AppStrings.keepTimeFree,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 12.5,
-                color: AppColors.textSecondary,
+                color: AppPalette.textSecondary(context),
                 height: 1.4,
               ),
             ),
@@ -1167,7 +1197,7 @@ class _PlannerPageState extends State<PlannerPage> {
               TextButton.icon(
                 onPressed: _openAddTask,
                 icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('Add a task'),
+                label: Text(AppStrings.addTask),
               ),
             ],
           ],
@@ -1197,7 +1227,7 @@ class _PlannerPageState extends State<PlannerPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionTitle(title: 'Course focus'),
+        _SectionTitle(title: AppStrings.courseFocus),
         const SizedBox(height: 10),
         SizedBox(
           height: 114,
@@ -1218,9 +1248,9 @@ class _PlannerPageState extends State<PlannerPage> {
                 width: 164,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: AppColors.card,
+                  color: AppPalette.card(context),
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: AppPalette.border(context)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1239,10 +1269,10 @@ class _PlannerPageState extends State<PlannerPage> {
                         Expanded(
                           child: Text(
                             subject.code,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary,
+                              color: AppPalette.textPrimary(context),
                             ),
                           ),
                         ),
@@ -1253,9 +1283,9 @@ class _PlannerPageState extends State<PlannerPage> {
                       subject.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11.5,
-                        color: AppColors.textSecondary,
+                        color: AppPalette.textSecondary(context),
                       ),
                     ),
                     const Spacer(),
@@ -1264,16 +1294,16 @@ class _PlannerPageState extends State<PlannerPage> {
                       child: LinearProgressIndicator(
                         value: progress,
                         minHeight: 6,
-                        backgroundColor: AppColors.inputFill,
+                        backgroundColor: AppPalette.inputFill(context),
                         color: subject.color,
                       ),
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '${_durationLabel(planned)} planned',
-                      style: const TextStyle(
+                      AppStrings.plannedCaption(_durationLabel(planned)),
+                      style: TextStyle(
                         fontSize: 10.5,
-                        color: AppColors.textSecondary,
+                        color: AppPalette.textSecondary(context),
                       ),
                     ),
                   ],
@@ -1320,7 +1350,9 @@ class _PlannerPageState extends State<PlannerPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  readOnly ? 'Past week archived' : 'Build a balanced week',
+                  readOnly
+                      ? AppStrings.pastWeekArchived
+                      : AppStrings.buildBalancedWeek,
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 15,
@@ -1330,8 +1362,8 @@ class _PlannerPageState extends State<PlannerPage> {
                 const SizedBox(height: 4),
                 Text(
                   readOnly
-                      ? 'Tasks in this week can be viewed but not changed.'
-                      : 'Fill free time without changing existing tasks.',
+                      ? AppStrings.smartPlanReadOnlySub
+                      : AppStrings.smartPlanActiveSub,
                   style: TextStyle(
                     color: Colors.white70,
                     fontSize: 11.5,
@@ -1442,7 +1474,7 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
         _endMinute = value;
       }
       _timeError = _endMinute - _startMinute < 5
-          ? 'End time must be at least 5 minutes after start.'
+          ? AppStrings.endTimeAfterStart
           : null;
     });
   }
@@ -1451,7 +1483,7 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
     FocusScope.of(context).unfocus();
     setState(
       () => _timeError = _endMinute - _startMinute < 5
-          ? 'End time must be at least 5 minutes after start.'
+          ? AppStrings.endTimeAfterStart
           : null,
     );
     if (!_formKey.currentState!.validate() || _timeError != null || _saving) {
@@ -1480,8 +1512,8 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not save the task. Please try again.'),
+          SnackBar(
+            content: Text(AppStrings.couldNotSaveTask),
           ),
         );
       }
@@ -1497,8 +1529,8 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
       constraints: BoxConstraints(
         maxHeight: MediaQuery.sizeOf(context).height * 0.92,
       ),
-      decoration: const BoxDecoration(
-        color: AppColors.card,
+      decoration: BoxDecoration(
+        color: AppPalette.card(context),
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: Form(
@@ -1511,7 +1543,7 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
                 width: 42,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: AppColors.border,
+                  color: AppPalette.border(context),
                   borderRadius: BorderRadius.circular(99),
                 ),
               ),
@@ -1519,18 +1551,18 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
             const SizedBox(height: 18),
             Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Add study task',
+                    AppStrings.addStudyTask,
                     style: TextStyle(
                       fontSize: 21,
                       fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
+                      color: AppPalette.textPrimary(context),
                     ),
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Close',
+                  tooltip: AppStrings.close,
                   onPressed: () => Navigator.pop(context),
                   icon: const Icon(Icons.close_rounded),
                 ),
@@ -1542,15 +1574,15 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
               autofocus: true,
               maxLength: 80,
               textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                labelText: 'Task title',
-                hintText: 'What do you want to accomplish?',
-                prefixIcon: Icon(Icons.task_alt_rounded),
+              decoration: InputDecoration(
+                labelText: AppStrings.taskTitle,
+                hintText: AppStrings.taskTitleHint,
+                prefixIcon: const Icon(Icons.task_alt_rounded),
               ),
               validator: (value) {
                 final text = value?.trim() ?? '';
-                if (text.isEmpty) return 'Enter a task title.';
-                if (text.length < 3) return 'Use at least 3 characters.';
+                if (text.isEmpty) return AppStrings.enterTaskTitle;
+                if (text.length < 3) return AppStrings.atLeast3Chars;
                 return null;
               },
             ),
@@ -1559,9 +1591,9 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
               borderRadius: BorderRadius.circular(16),
               onTap: _pickDate,
               child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'Date',
-                  prefixIcon: Icon(Icons.calendar_today_rounded),
+                decoration: InputDecoration(
+                  labelText: AppStrings.date,
+                  prefixIcon: const Icon(Icons.calendar_today_rounded),
                 ),
                 child: Text(
                   '${_weekdayLong(_date.weekday)}, ${_monthLong(_date.month)} ${_date.day}, ${_date.year}',
@@ -1574,7 +1606,7 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
               children: [
                 Expanded(
                   child: _TimeField(
-                    label: 'Starts',
+                    label: AppStrings.starts,
                     minute: _startMinute,
                     onTap: () => _pickTime(true),
                   ),
@@ -1582,7 +1614,7 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _TimeField(
-                    label: 'Ends',
+                    label: AppStrings.ends,
                     minute: _endMinute,
                     onTap: () => _pickTime(false),
                   ),
@@ -1604,9 +1636,9 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
             DropdownButtonFormField<PlannerTaskType>(
               initialValue: _type,
               isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Task type',
-                prefixIcon: Icon(Icons.category_outlined),
+              decoration: InputDecoration(
+                labelText: AppStrings.taskType,
+                prefixIcon: const Icon(Icons.category_outlined),
               ),
               items: PlannerTaskType.values
                   .map(
@@ -1620,14 +1652,14 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
             DropdownButtonFormField<String?>(
               initialValue: _subjectId,
               isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Course',
-                prefixIcon: Icon(Icons.school_outlined),
+              decoration: InputDecoration(
+                labelText: AppStrings.course,
+                prefixIcon: const Icon(Icons.school_outlined),
               ),
               items: [
-                const DropdownMenuItem<String?>(
+                DropdownMenuItem<String?>(
                   value: null,
-                  child: Text('General / no course'),
+                  child: Text(AppStrings.generalNoCourse),
                 ),
                 ...widget.subjects.map(
                   (subject) => DropdownMenuItem<String?>(
@@ -1640,8 +1672,8 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
                 ),
               ],
               selectedItemBuilder: (context) => [
-                const Text(
-                  'General / no course',
+                Text(
+                  AppStrings.generalNoCourse,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -1660,11 +1692,11 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
               controller: _noteController,
               maxLength: 300,
               maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: 'Notes (optional)',
-                hintText: 'Resources, goals, or reminders',
+              decoration: InputDecoration(
+                labelText: AppStrings.notesOptional,
+                hintText: AppStrings.notesHint,
                 alignLabelWithHint: true,
-                prefixIcon: Padding(
+                prefixIcon: const Padding(
                   padding: EdgeInsets.only(bottom: 44),
                   child: Icon(Icons.notes_rounded),
                 ),
@@ -1683,7 +1715,9 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
                       ),
                     )
                   : const Icon(Icons.add_task_rounded),
-              label: Text(_saving ? 'Adding task…' : 'Add to planner'),
+              label: Text(
+                _saving ? AppStrings.addingTask : AppStrings.addToPlanner,
+              ),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.purple,
                 foregroundColor: Colors.white,
@@ -1716,8 +1750,8 @@ class _TaskDetailSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(22, 14, 22, 24),
-      decoration: const BoxDecoration(
-        color: AppColors.card,
+      decoration: BoxDecoration(
+        color: AppPalette.card(context),
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: Column(
@@ -1729,7 +1763,7 @@ class _TaskDetailSheet extends StatelessWidget {
               width: 42,
               height: 5,
               decoration: BoxDecoration(
-                color: AppColors.border,
+                color: AppPalette.border(context),
                 borderRadius: BorderRadius.circular(99),
               ),
             ),
@@ -1751,8 +1785,8 @@ class _TaskDetailSheet extends StatelessWidget {
               fontSize: 22,
               fontWeight: FontWeight.w800,
               color: task.completed
-                  ? AppColors.textSecondary
-                  : AppColors.textPrimary,
+                  ? AppPalette.textSecondary(context)
+                  : AppPalette.textPrimary(context),
               decoration: task.completed ? TextDecoration.lineThrough : null,
             ),
           ),
@@ -1776,10 +1810,10 @@ class _TaskDetailSheet extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               task.note!,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13.5,
                 height: 1.45,
-                color: AppColors.textSecondary,
+                color: AppPalette.textSecondary(context),
               ),
             ),
           ],
@@ -1789,20 +1823,22 @@ class _TaskDetailSheet extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.inputFill,
+                color: AppPalette.inputFill(context),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: AppPalette.border(context)),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.lock_outline_rounded, size: 18),
-                  SizedBox(width: 9),
+                  const Icon(Icons.lock_outline_rounded, size: 18),
+                  const SizedBox(width: 9),
                   Expanded(
                     child: Text(
-                      'This date has passed. The task is kept as history and cannot be changed.',
+                      AppSettings.instance.locale.languageCode == 'bn'
+                          ? 'এই তারিখটি পেরিয়ে গেছে। কাজটি ইতিহাস হিসেবে রাখা হয়েছে এবং পরিবর্তন করা যাবে না।'
+                          : 'This date has passed. The task is kept as history and cannot be changed.',
                       style: TextStyle(
                         fontSize: 12,
-                        color: AppColors.textSecondary,
+                        color: AppPalette.textSecondary(context),
                         height: 1.35,
                       ),
                     ),
@@ -1819,7 +1855,7 @@ class _TaskDetailSheet extends StatelessWidget {
                   child: OutlinedButton.icon(
                     onPressed: () => Navigator.pop(context, _TaskAction.delete),
                     icon: const Icon(Icons.delete_outline_rounded),
-                    label: const Text('Delete'),
+                    label: Text(AppStrings.delete),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFFDC2626),
                       side: const BorderSide(color: Color(0xFFFCA5A5)),
@@ -1833,10 +1869,14 @@ class _TaskDetailSheet extends StatelessWidget {
                     icon: Icon(
                       task.completed ? Icons.undo_rounded : Icons.check_rounded,
                     ),
-                    label: Text(task.completed ? 'Mark pending' : 'Mark done'),
+                    label: Text(
+                      task.completed
+                          ? AppStrings.markPending
+                          : AppStrings.markDone,
+                    ),
                     style: FilledButton.styleFrom(
                       backgroundColor: task.completed
-                          ? AppColors.textSecondary
+                          ? AppPalette.textSecondary(context)
                           : const Color(0xFF059669),
                       foregroundColor: Colors.white,
                     ),
@@ -1869,10 +1909,10 @@ class _TaskCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.card,
+      color: AppPalette.card(context),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: AppColors.border),
+        side: BorderSide(color: AppPalette.border(context)),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
@@ -1885,7 +1925,7 @@ class _TaskCard extends StatelessWidget {
                 width: 4,
                 height: 58,
                 decoration: BoxDecoration(
-                  color: task.completed ? AppColors.border : color,
+                  color: task.completed ? AppPalette.border(context) : color,
                   borderRadius: BorderRadius.circular(99),
                 ),
               ),
@@ -1893,8 +1933,12 @@ class _TaskCard extends StatelessWidget {
               Semantics(
                 button: true,
                 label: task.completed
-                    ? 'Mark ${task.title} pending'
-                    : 'Mark ${task.title} complete',
+                    ? (AppSettings.instance.locale.languageCode == 'bn'
+                          ? '${task.title} বাকি হিসেবে চিহ্নিত'
+                          : 'Mark ${task.title} pending')
+                    : (AppSettings.instance.locale.languageCode == 'bn'
+                          ? '${task.title} সম্পন্ন হিসেবে চিহ্নিত'
+                          : 'Mark ${task.title} complete'),
                 child: Checkbox(
                   value: task.completed,
                   onChanged: readOnly ? null : (_) => onToggle(),
@@ -1917,8 +1961,8 @@ class _TaskCard extends StatelessWidget {
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
                         color: task.completed
-                            ? AppColors.textSecondary
-                            : AppColors.textPrimary,
+                            ? AppPalette.textSecondary(context)
+                            : AppPalette.textPrimary(context),
                         decoration: task.completed
                             ? TextDecoration.lineThrough
                             : null,
@@ -1927,10 +1971,10 @@ class _TaskCard extends StatelessWidget {
                     const SizedBox(height: 7),
                     Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.schedule_rounded,
                           size: 14,
-                          color: AppColors.textSecondary,
+                          color: AppPalette.textSecondary(context),
                         ),
                         const SizedBox(width: 4),
                         Expanded(
@@ -1938,9 +1982,9 @@ class _TaskCard extends StatelessWidget {
                             '${_formatMinute(context, task.startMinute)} – ${_formatMinute(context, task.endMinute)}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11.5,
-                              color: AppColors.textSecondary,
+                              color: AppPalette.textSecondary(context),
                             ),
                           ),
                         ),
@@ -1953,14 +1997,16 @@ class _TaskCard extends StatelessWidget {
                 ),
               ),
               IconButton(
-                tooltip: readOnly ? 'Past tasks are read-only' : 'Delete task',
+                tooltip: readOnly
+                    ? AppStrings.pastTasksReadOnly
+                    : AppStrings.deleteTask,
                 onPressed: readOnly ? null : onDelete,
                 icon: Icon(
                   readOnly
                       ? Icons.lock_outline_rounded
                       : Icons.delete_outline_rounded,
                   color: readOnly
-                      ? AppColors.textSecondary
+                      ? AppPalette.textSecondary(context)
                       : const Color(0xFFDC2626),
                 ),
               ),
@@ -1999,10 +2045,10 @@ class _Metric extends StatelessWidget {
           Text(
             value,
             maxLines: 1,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w800,
-              color: AppColors.textPrimary,
+              color: AppPalette.textPrimary(context),
             ),
           ),
           const SizedBox(height: 2),
@@ -2010,9 +2056,9 @@ class _Metric extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 9.5,
-              color: AppColors.textSecondary,
+              color: AppPalette.textSecondary(context),
             ),
           ),
         ],
@@ -2083,14 +2129,14 @@ class _DetailLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(
     children: [
-      Icon(icon, size: 17, color: AppColors.textSecondary),
+      Icon(icon, size: 17, color: AppPalette.textSecondary(context)),
       const SizedBox(width: 8),
       Expanded(
         child: Text(
           text,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 13,
-            color: AppColors.textPrimary,
+            color: AppPalette.textPrimary(context),
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -2120,10 +2166,10 @@ class _SectionTitle extends StatelessWidget {
           title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w800,
-            color: AppColors.textPrimary,
+            color: AppPalette.textPrimary(context),
           ),
         ),
       ),
@@ -2140,9 +2186,9 @@ class _SurfaceCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: padding,
     decoration: BoxDecoration(
-      color: AppColors.card,
+      color: AppPalette.card(context),
       borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: AppColors.border),
+      border: Border.all(color: AppPalette.border(context)),
       boxShadow: const [
         BoxShadow(
           color: Color(0x0A0F172A),
@@ -2165,31 +2211,31 @@ class _PlannerLoadingView extends StatelessWidget {
     children: [
       Row(
         children: [
-          Expanded(child: _placeholder(170, 28)),
+          Expanded(child: _placeholder(context, 170, 28)),
           const SizedBox(width: 50),
-          _placeholder(104, 46),
+          _placeholder(context, 104, 46),
         ],
       ),
       const SizedBox(height: 22),
-      _placeholder(double.infinity, 66),
+      _placeholder(context, double.infinity, 66),
       const SizedBox(height: 14),
-      _placeholder(double.infinity, 76),
+      _placeholder(context, double.infinity, 76),
       const SizedBox(height: 20),
-      _placeholder(double.infinity, 190),
+      _placeholder(context, double.infinity, 190),
       const SizedBox(height: 24),
-      _placeholder(130, 22),
+      _placeholder(context, 130, 22),
       const SizedBox(height: 12),
-      _placeholder(double.infinity, 90),
+      _placeholder(context, double.infinity, 90),
       const SizedBox(height: 10),
-      _placeholder(double.infinity, 90),
+      _placeholder(context, double.infinity, 90),
     ],
   );
 
-  static Widget _placeholder(double width, double height) => Container(
+  static Widget _placeholder(BuildContext context, double width, double height) => Container(
     width: width,
     height: height,
     decoration: BoxDecoration(
-      color: AppColors.border.withValues(alpha: 0.45),
+      color: AppPalette.border(context).withValues(alpha: 0.45),
       borderRadius: BorderRadius.circular(18),
     ),
   );
@@ -2206,33 +2252,33 @@ class _PlannerErrorView extends StatelessWidget {
     padding: const EdgeInsets.all(32),
     children: [
       const SizedBox(height: 120),
-      const Icon(
+      Icon(
         Icons.cloud_off_rounded,
         size: 54,
-        color: AppColors.textSecondary,
+        color: AppPalette.textSecondary(context),
       ),
       const SizedBox(height: 16),
-      const Text(
-        'Planner unavailable',
+      Text(
+        AppStrings.plannerUnavailable,
         textAlign: TextAlign.center,
         style: TextStyle(
           fontSize: 19,
           fontWeight: FontWeight.w800,
-          color: AppColors.textPrimary,
+          color: AppPalette.textPrimary(context),
         ),
       ),
       const SizedBox(height: 8),
       Text(
         message,
         textAlign: TextAlign.center,
-        style: const TextStyle(color: AppColors.textSecondary, height: 1.4),
+        style: TextStyle(color: AppPalette.textSecondary(context), height: 1.4),
       ),
       const SizedBox(height: 20),
       Center(
         child: FilledButton.icon(
           onPressed: onRetry,
           icon: const Icon(Icons.refresh_rounded),
-          label: const Text('Try again'),
+          label: Text(AppStrings.tryAgain),
         ),
       ),
     ],
@@ -2301,47 +2347,54 @@ String _durationLabel(int minutes) {
   return '${hours}h ${remaining}m';
 }
 
-String _weekdayShort(int weekday) =>
-    const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][weekday - 1];
-
-String _weekdayLong(int weekday) => const [
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-  'Sunday',
+String _weekdayShort(int weekday) => [
+  AppStrings.wdMon,
+  AppStrings.wdTue,
+  AppStrings.wdWed,
+  AppStrings.wdThu,
+  AppStrings.wdFri,
+  AppStrings.wdSat,
+  AppStrings.wdSun,
 ][weekday - 1];
 
-String _monthShort(int month) => const [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
+String _weekdayLong(int weekday) => [
+  AppStrings.wdMonday,
+  AppStrings.wdTuesday,
+  AppStrings.wdWednesday,
+  AppStrings.wdThursday,
+  AppStrings.wdFriday,
+  AppStrings.wdSaturday,
+  AppStrings.wdSunday,
+][weekday - 1];
+
+String _monthShort(int month) => [
+  AppStrings.mnJan,
+  AppStrings.mnFeb,
+  AppStrings.mnMar,
+  AppStrings.mnApr,
+  AppStrings.mnMay,
+  AppStrings.mnJun,
+  AppStrings.mnJul,
+  AppStrings.mnAug,
+  AppStrings.mnSep,
+  AppStrings.mnOct,
+  AppStrings.mnNov,
+  AppStrings.mnDec,
 ][month - 1];
 
-String _monthLong(int month) => const [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
+String _monthLong(int month) => [
+  AppStrings.mnJanuary,
+  AppStrings.mnFebruary,
+  AppStrings.mnMarch,
+  AppStrings.mnApril,
+  AppStrings.mnMayL,
+  AppStrings.mnJune,
+  AppStrings.mnJuly,
+  AppStrings.mnAugust,
+  AppStrings.mnSeptember,
+  AppStrings.mnOctober,
+  AppStrings.mnNovember,
+  AppStrings.mnDecember,
 ][month - 1];
 
 String _weekRange(DateTime start, DateTime end) {

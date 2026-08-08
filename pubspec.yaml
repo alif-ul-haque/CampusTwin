@@ -11,16 +11,23 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   cupertino_icons: ^1.0.8
   flutter_dotenv: ^5.1.0
   device_apps: ^2.2.0
   permission_handler: ^11.3.1
+  image_picker: ^1.1.2
 
   # Firebase
   firebase_core: ^3.13.1
   firebase_auth: ^5.5.2
   cloud_firestore: ^5.6.6
   firebase_messaging: ^15.2.5
+
+dependency_overrides:
+  device_apps:
+    path: packages/device_apps
 
 dev_dependencies:
   flutter_test:

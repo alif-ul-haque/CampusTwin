@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:campus_twin/l10n.dart';
 import 'package:campus_twin/theme.dart';
 
 // =============================================================================
@@ -38,7 +39,7 @@ class _AssistantRepository {
     chatMessages = [
       AssistantMessage(
         id: 'a1',
-        text: "Hi Alif! I'm your Twinny assistant. How can I help you today?",
+        text: AppStrings.assistantGreeting('Alif'),
         isUser: false,
         timestamp: DateTime.now(),
       ),
@@ -54,11 +55,11 @@ class _AssistantRepository {
       timestamp: DateTime.now(),
     ));
     final replies = [
-      "Great question! Based on your upcoming deadlines, I'd suggest focusing on your ML Assignment first — it's due tomorrow.",
-      "I noticed your stress level is medium. A 15-minute break can help. Why not take a short walk?",
-      "You're making good progress this week. Keep up the consistency!",
-      'Good progress on Database Systems! You\'re at 72% of your weekly study target.',
-      "Don't forget to review your study plan for tomorrow. I can help you reschedule if needed.",
+      AppStrings.assistantReply1,
+      AppStrings.assistantReply2,
+      AppStrings.assistantReply3,
+      AppStrings.assistantReply4,
+      AppStrings.assistantReply5,
     ];
     Future.delayed(const Duration(milliseconds: 600), () {
       chatMessages.add(AssistantMessage(
@@ -149,18 +150,18 @@ class _AssistantTabState extends State<AssistantTab> {
                       child: const Icon(Icons.smart_toy_rounded, color: Colors.white, size: 24),
                     ),
                     const SizedBox(width: 14),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Twinny Assistant',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                            AppStrings.assistantTitle,
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppPalette.textPrimary(context)),
                           ),
                           SizedBox(height: 2),
                           Text(
-                            'Ask me anything about your studies',
-                            style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5),
+                            AppStrings.assistantSubtitle,
+                            style: TextStyle(color: AppPalette.textSecondary(context), fontSize: 12.5),
                           ),
                         ],
                       ),
@@ -172,7 +173,7 @@ class _AssistantTabState extends State<AssistantTab> {
           ),
           Expanded(
             child: msgs.isEmpty
-                ? _emptyChat()
+                ? _emptyChat(context)
                 : ListView.builder(
                     controller: _chatScrollController,
                     padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -205,12 +206,12 @@ class _AssistantTabState extends State<AssistantTab> {
                               child: Container(
                                 padding: const EdgeInsets.all(14),
                                 decoration: BoxDecoration(
-                                  color: m.isUser ? AppColors.purple : AppColors.card,
+                                  color: m.isUser ? AppColors.purple : AppPalette.card(context),
                                   borderRadius: BorderRadius.circular(16).copyWith(
                                     bottomRight: m.isUser ? const Radius.circular(4) : null,
                                     bottomLeft: !m.isUser ? const Radius.circular(4) : null,
                                   ),
-                                  border: m.isUser ? null : Border.all(color: AppColors.border.withValues(alpha: 0.5)),
+                                  border: m.isUser ? null : Border.all(color: AppPalette.border(context).withValues(alpha: 0.5)),
                                   boxShadow: m.isUser
                                       ? [
                                           BoxShadow(
@@ -224,7 +225,7 @@ class _AssistantTabState extends State<AssistantTab> {
                                 child: Text(
                                   m.text,
                                   style: TextStyle(
-                                    color: m.isUser ? Colors.white : AppColors.textPrimary,
+                                    color: m.isUser ? Colors.white : AppPalette.textPrimary(context),
                                     fontSize: 13.5,
                                     height: 1.35,
                                   ),
@@ -252,7 +253,7 @@ class _AssistantTabState extends State<AssistantTab> {
           Container(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
             decoration: BoxDecoration(
-              color: AppColors.card,
+              color: AppPalette.card(context),
               boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, -2))],
             ),
             child: Row(
@@ -261,9 +262,9 @@ class _AssistantTabState extends State<AssistantTab> {
                   child: TextField(
                     controller: _chatController,
                     decoration: InputDecoration(
-                      hintText: 'Ask Twinny...',
+                      hintText: AppStrings.askTwinnyHint,
                       filled: true,
-                      fillColor: AppColors.inputFill,
+                      fillColor: AppPalette.inputFill(context),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     ),
@@ -296,18 +297,18 @@ class _AssistantTabState extends State<AssistantTab> {
     );
   }
 
-  Widget _emptyChat() {
+  Widget _emptyChat(BuildContext context) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.chat_outlined, size: 48, color: AppColors.textSecondary.withValues(alpha: 0.2)),
+          Icon(Icons.chat_outlined, size: 48, color: AppPalette.textSecondary(context).withValues(alpha: 0.2)),
           const SizedBox(height: 12),
-          const Text('Ask Twinny anything!', style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+          Text(AppStrings.askAnythingTitle, style: TextStyle(color: AppPalette.textSecondary(context), fontSize: 14)),
           const SizedBox(height: 4),
           Text(
-            'Study tips, deadline help, stress advice…',
-            style: TextStyle(color: AppColors.textSecondary.withValues(alpha: 0.6), fontSize: 12.5),
+            AppStrings.askAnythingSubtitle,
+            style: TextStyle(color: AppPalette.textSecondary(context).withValues(alpha: 0.6), fontSize: 12.5),
           ),
         ],
       ),
@@ -353,7 +354,7 @@ class _StaticBorderBox extends StatelessWidget {
         padding: const EdgeInsets.all(_strokeWidth),
         child: ClipRRect(
           borderRadius: BorderRadius.circular((borderRadius - _strokeWidth).clamp(0, borderRadius)),
-          child: ColoredBox(color: AppColors.card, child: child),
+          child: ColoredBox(color: AppPalette.card(context), child: child),
         ),
       ),
     );

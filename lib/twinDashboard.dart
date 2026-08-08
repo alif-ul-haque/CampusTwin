@@ -7,36 +7,16 @@ import 'package:campus_twin/assistant.dart';
 import 'package:campus_twin/budget_page.dart';
 import 'package:campus_twin/app_blocker_page.dart';
 import 'package:campus_twin/leaderboard_page.dart';
+import 'package:campus_twin/app_settings.dart';
+import 'package:campus_twin/l10n.dart';
+import 'package:campus_twin/notifications_page.dart';
+import 'package:campus_twin/profile_edit_sheet.dart';
 
 // =============================================================================
 // DATA MODELS
 // =============================================================================
 
 enum StressLevel { low, medium, high }
-
-class UserProfile {
-  final String id;
-  final String name;
-  final String nickname;
-  final String email;
-  final String department;
-  final String semester;
-  final String session;
-  final String phone;
-  final List<String> enrolledCourses;
-
-  const UserProfile({
-    required this.id,
-    required this.name,
-    required this.nickname,
-    required this.email,
-    required this.department,
-    required this.semester,
-    this.session = '2022-2026',
-    this.phone = '+880 1XXX-XXXXXX',
-    this.enrolledCourses = const [],
-  });
-}
 
 class ScheduleItem {
   final String id;
@@ -108,24 +88,7 @@ class _DashboardRepository {
   // ── Profile ──────────────────────────────────────────────────────────
   // TODO: GET /profile/{userId}  →  UserProfile
   //       enrolledCourses drives what the Planner tab displays.
-  static UserProfile get profile => const UserProfile(
-    id: 'u1',
-    name: 'Abu Salah Md. Jamil',
-    nickname: 'Jamil',
-    email: 'jamil@student.campustwin.edu',
-    department: 'Computer Science & Engineering',
-    semester: '6th Semester',
-    session: '2022-2026',
-    phone: '+880 1700-000001',
-    enrolledCourses: [
-      'CSE301',
-      'CSE302',
-      'CSE303',
-      'CSE402',
-      'CSE501',
-      'INT401',
-    ],
-  );
+  static UserProfile get profile => AppSettings.instance.profile;
 
   // ── Home tab ─────────────────────────────────────────────────────────
   static StressLevel stressLevel = StressLevel.medium;
@@ -285,14 +248,32 @@ class _DashboardPageState extends State<DashboardPage>
     ).push(MaterialPageRoute(builder: (_) => const HabitTrackerPage()));
   }
 
+  void _openNotifications() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const NotificationsPage()));
+  }
+
   void _showProfile() {
-    final p = _DashboardRepository.profile;
+    final p = AppSettings.instance.profile;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => _ProfileSheet(
         profile: p,
+        onEditProfile: () {
+          Navigator.of(context).pop();
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const ProfileEditPage()));
+        },
+        onOpenNotifications: () {
+          Navigator.of(context).pop();
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const NotificationsPage()));
+        },
         onSignOut: () {
           Navigator.of(context).pop();
           Navigator.of(context).pushAndRemoveUntil(
@@ -331,49 +312,57 @@ class _DashboardPageState extends State<DashboardPage>
   }
 
   // ── Tab items ────────────────────────────────────────────────────────
-  static const _tabs = [
+  List<_TabItem> get _tabs => [
     _TabItem(
-      label: 'Home',
+      label: AppStrings.tabHome,
       icon: Icons.dashboard_outlined,
       activeIcon: Icons.dashboard_rounded,
     ),
     _TabItem(
-      label: 'Planner',
+      label: AppStrings.tabPlanner,
       icon: Icons.edit_calendar_outlined,
       activeIcon: Icons.edit_calendar_rounded,
     ),
     _TabItem(
-      label: 'Habits',
+      label: AppStrings.tabHabits,
       icon: Icons.local_fire_department_outlined,
       activeIcon: Icons.local_fire_department_rounded,
     ),
     _TabItem(
-      label: 'Budget',
+      label: AppStrings.tabBudget,
       icon: Icons.account_balance_wallet_outlined,
       activeIcon: Icons.account_balance_wallet_rounded,
     ),
     _TabItem(
-      label: 'Assistant',
+      label: AppStrings.tabAssistant,
       icon: Icons.smart_toy_outlined,
       activeIcon: Icons.smart_toy_rounded,
     ),
   ];
 
   // ── Helpers ──────────────────────────────────────────────────────────
-  String _wd(int w) => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][w - 1];
+  String _wd(int w) => [
+    AppStrings.wdMon,
+    AppStrings.wdTue,
+    AppStrings.wdWed,
+    AppStrings.wdThu,
+    AppStrings.wdFri,
+    AppStrings.wdSat,
+    AppStrings.wdSun,
+  ][w - 1];
   String _mn(int m) => [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
+    AppStrings.mnJan,
+    AppStrings.mnFeb,
+    AppStrings.mnMar,
+    AppStrings.mnApr,
+    AppStrings.mnMay,
+    AppStrings.mnJun,
+    AppStrings.mnJul,
+    AppStrings.mnAug,
+    AppStrings.mnSep,
+    AppStrings.mnOct,
+    AppStrings.mnNov,
+    AppStrings.mnDec,
   ][m - 1];
 
   Color _stressColor(StressLevel l) => switch (l) {
@@ -383,9 +372,9 @@ class _DashboardPageState extends State<DashboardPage>
   };
 
   String _stressLabel(StressLevel l) => switch (l) {
-    StressLevel.low => 'Low',
-    StressLevel.medium => 'Medium',
-    StressLevel.high => 'High',
+    StressLevel.low => AppStrings.stressLow,
+    StressLevel.medium => AppStrings.stressMedium,
+    StressLevel.high => AppStrings.stressHigh,
   };
 
   Widget _sectionTitle(String title, {String? trailing}) {
@@ -402,8 +391,8 @@ class _DashboardPageState extends State<DashboardPage>
         const SizedBox(width: 8),
         Text(
           title,
-          style: const TextStyle(
-            color: AppColors.textPrimary,
+          style: TextStyle(
+            color: AppPalette.textPrimary(context),
             fontSize: 16,
             fontWeight: FontWeight.w800,
             letterSpacing: -0.2,
@@ -413,8 +402,8 @@ class _DashboardPageState extends State<DashboardPage>
           const Spacer(),
           Text(
             trailing,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
+            style: TextStyle(
+              color: AppPalette.textSecondary(context),
               fontSize: 12,
               fontWeight: FontWeight.w500,
             ),
@@ -436,13 +425,13 @@ class _DashboardPageState extends State<DashboardPage>
             Icon(
               icon,
               size: 32,
-              color: AppColors.textSecondary.withValues(alpha: 0.3),
+              color: AppPalette.textSecondary(context).withValues(alpha: 0.3),
             ),
             const SizedBox(height: 8),
             Text(
               msg,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
+              style: TextStyle(
+                color: AppPalette.textSecondary(context),
                 fontSize: 13,
               ),
             ),
@@ -455,12 +444,25 @@ class _DashboardPageState extends State<DashboardPage>
   // ── Build ────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: AppSettings.instance,
+      builder: (context, _) => _buildScaffold(context),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       extendBody: false,
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Colors.white, Color(0xFFF6F9FF), Colors.white],
+            colors: [
+              AppPalette.background(context),
+              AppPalette.isDark(context)
+                  ? const Color(0xFF111B2E)
+                  : const Color(0xFFF6F9FF),
+              AppPalette.background(context),
+            ],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
@@ -473,8 +475,10 @@ class _DashboardPageState extends State<DashboardPage>
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: AppColors.card,
-          border: Border(top: BorderSide(color: AppColors.border, width: 1)),
+          color: AppPalette.card(context),
+          border: Border(
+            top: BorderSide(color: AppPalette.border(context), width: 1),
+          ),
           boxShadow: [
             BoxShadow(
               color: Color(0x0F0F172A),
@@ -491,7 +495,7 @@ class _DashboardPageState extends State<DashboardPage>
                 return TextStyle(
                   fontSize: 11,
                   fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-                  color: sel ? AppColors.purple : AppColors.textSecondary,
+                  color: sel ? AppColors.purple : AppPalette.textSecondary(context),
                 );
               }),
             ),
@@ -566,14 +570,14 @@ class _DashboardPageState extends State<DashboardPage>
             _buildVisualizationSection(),
             const SizedBox(height: 22),
             _sectionTitle(
-              'Today\'s Schedule',
+              AppStrings.todaySchedule,
               trailing:
                   '${_DashboardRepository.schedule.where((s) => s.isCompleted).length}/${_DashboardRepository.schedule.length}',
             ),
             const SizedBox(height: 10),
             _buildScheduleList(),
             const SizedBox(height: 22),
-            _sectionTitle('Upcoming Deadlines'),
+            _sectionTitle(AppStrings.upcomingDeadlines),
             const SizedBox(height: 10),
             _buildDeadlineList(),
           ],
@@ -586,10 +590,10 @@ class _DashboardPageState extends State<DashboardPage>
     final now = DateTime.now();
     final hour = now.hour;
     final greeting = hour < 12
-        ? 'Good morning'
+        ? AppStrings.goodMorning
         : hour < 17
-        ? 'Good afternoon'
-        : 'Good evening';
+        ? AppStrings.goodAfternoon
+        : AppStrings.goodEvening;
     final p = _DashboardRepository.profile;
     final sc = _stressColor(_DashboardRepository.stressLevel);
     final sl = _stressLabel(_DashboardRepository.stressLevel);
@@ -608,16 +612,16 @@ class _DashboardPageState extends State<DashboardPage>
                     children: [
                       Text(
                         '$greeting,',
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
+                        style: TextStyle(
+                          color: AppPalette.textSecondary(context),
                           fontSize: 13,
                         ),
                       ),
                       const SizedBox(width: 6),
                       Text(
                         p.nickname,
-                        style: const TextStyle(
-                          color: AppColors.textPrimary,
+                        style: TextStyle(
+                          color: AppPalette.textPrimary(context),
                           fontSize: 17,
                           fontWeight: FontWeight.w800,
                           letterSpacing: -0.3,
@@ -630,14 +634,18 @@ class _DashboardPageState extends State<DashboardPage>
                     children: [
                       Icon(
                         Icons.calendar_today_rounded,
-                        color: AppColors.textSecondary.withValues(alpha: 0.7),
+                        color: AppPalette.textSecondary(context).withValues(
+                          alpha: 0.7,
+                        ),
                         size: 11,
                       ),
                       const SizedBox(width: 4),
                       Text(
                         '${_wd(now.weekday)}, ${_mn(now.month)} ${now.day}',
                         style: TextStyle(
-                          color: AppColors.textSecondary.withValues(alpha: 0.7),
+                          color: AppPalette.textSecondary(context).withValues(
+                            alpha: 0.7,
+                          ),
                           fontSize: 11.5,
                         ),
                       ),
@@ -681,6 +689,52 @@ class _DashboardPageState extends State<DashboardPage>
                 ],
               ),
             ),
+            // Notification bell — top right, opens notification center
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                GestureDetector(
+                  onTap: _openNotifications,
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    margin: const EdgeInsets.only(right: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.purple.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(
+                      Icons.notifications_none_rounded,
+                      color: AppColors.purple,
+                      size: 21,
+                    ),
+                  ),
+                ),
+                if (AppSettings.instance.unreadCount > 0)
+                  Positioned(
+                    right: 4,
+                    top: -2,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1,
+                      ),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFDC2626),
+                        borderRadius: BorderRadius.all(Radius.circular(999)),
+                      ),
+                      child: Text(
+                        '${AppSettings.instance.unreadCount}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             // Avatar — top right, tap → profile
             GestureDetector(
               onTap: _showProfile,
@@ -688,12 +742,6 @@ class _DashboardPageState extends State<DashboardPage>
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [AppColors.purple, Color(0xFF7C3AED)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
                       color: AppColors.purple.withValues(alpha: 0.3),
@@ -702,15 +750,9 @@ class _DashboardPageState extends State<DashboardPage>
                     ),
                   ],
                 ),
-                child: Center(
-                  child: Text(
-                    p.name.split(' ').map((e) => e[0]).take(2).join(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: AppAvatar(size: 48, borderRadius: 16),
                 ),
               ),
             ),
@@ -726,7 +768,7 @@ class _DashboardPageState extends State<DashboardPage>
         Expanded(
           child: _StatTile(
             icon: Icons.leaderboard_rounded,
-            label: 'Ranking',
+            label: AppStrings.ranking,
             value: '#1',
             accent: const Color(0xFF6366F1),
             onTap: () => Navigator.of(context).push(
@@ -738,8 +780,8 @@ class _DashboardPageState extends State<DashboardPage>
         Expanded(
           child: _StatTile(
             icon: Icons.local_fire_department_outlined,
-            label: 'Streak',
-            value: '${_DashboardRepository.habitStreak} days',
+            label: AppStrings.streak,
+            value: '${_DashboardRepository.habitStreak} ${AppStrings.days}',
             accent: const Color(0xFF06B6D4),
             onTap: _openHabitTracker,
           ),
@@ -748,7 +790,7 @@ class _DashboardPageState extends State<DashboardPage>
         Expanded(
           child: _StatTile(
             icon: Icons.account_balance_wallet_outlined,
-            label: 'Budget Left',
+            label: AppStrings.budgetLeft,
             value: '৳${_DashboardRepository.budgetRemaining.toStringAsFixed(0)}',
             accent: const Color(0xFF10B981),
             onTap: () => setState(() => _selectedTabIndex = 3),
@@ -765,7 +807,15 @@ class _DashboardPageState extends State<DashboardPage>
     final hours = _DashboardRepository.weeklyHours;
     final maxH = hours.reduce((a, b) => a > b ? a : b);
     final totalH = hours.fold<double>(0, (s, h) => s + h);
-    final labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final labels = [
+      AppStrings.wdMon,
+      AppStrings.wdTue,
+      AppStrings.wdWed,
+      AppStrings.wdThu,
+      AppStrings.wdFri,
+      AppStrings.wdSat,
+      AppStrings.wdSun,
+    ];
     final dist = _DashboardRepository.subjectDistribution;
     final distColors = [
       const Color(0xFF4F46E5),
@@ -800,12 +850,12 @@ class _DashboardPageState extends State<DashboardPage>
                       ),
                     ),
                     const SizedBox(width: 10),
-                    const Text(
+                    Text(
                       'Weekly Study Hours',
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
+                        color: AppPalette.textPrimary(context),
                       ),
                     ),
                     const Spacer(),
@@ -841,7 +891,7 @@ class _DashboardPageState extends State<DashboardPage>
                                   fontWeight: FontWeight.w700,
                                   color: isToday
                                       ? AppColors.purple
-                                      : AppColors.textSecondary.withValues(
+                                      : AppPalette.textSecondary(context).withValues(
                                           alpha: 0.6,
                                         ),
                                 ),
@@ -889,7 +939,7 @@ class _DashboardPageState extends State<DashboardPage>
                                   fontWeight: FontWeight.w600,
                                   color: isToday
                                       ? AppColors.purple
-                                      : AppColors.textSecondary.withValues(
+                                      : AppPalette.textSecondary(context).withValues(
                                           alpha: 0.6,
                                         ),
                                 ),
@@ -929,12 +979,12 @@ class _DashboardPageState extends State<DashboardPage>
                       ),
                     ),
                     const SizedBox(width: 10),
-                    const Text(
+                    Text(
                       'Subject Distribution',
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
+                        color: AppPalette.textPrimary(context),
                       ),
                     ),
                   ],
@@ -957,17 +1007,17 @@ class _DashboardPageState extends State<DashboardPage>
                             children: [
                               Text(
                                 '${totalH.toInt()}h',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w800,
-                                  color: AppColors.textPrimary,
+                                  color: AppPalette.textPrimary(context),
                                 ),
                               ),
                               Text(
                                 'total',
                                 style: TextStyle(
                                   fontSize: 9,
-                                  color: AppColors.textSecondary.withValues(
+                                  color: AppPalette.textSecondary(context).withValues(
                                     alpha: 0.7,
                                   ),
                                 ),
@@ -1002,19 +1052,19 @@ class _DashboardPageState extends State<DashboardPage>
                                 Expanded(
                                   child: Text(
                                     entry.key,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 11.5,
                                       fontWeight: FontWeight.w600,
-                                      color: AppColors.textPrimary,
+                                      color: AppPalette.textPrimary(context),
                                     ),
                                   ),
                                 ),
                                 Text(
                                   '${(entry.value * 100).toInt()}%',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w800,
-                                    color: AppColors.textSecondary,
+                                    color: AppPalette.textSecondary(context),
                                   ),
                                 ),
                               ],
@@ -1073,10 +1123,10 @@ class _DashboardPageState extends State<DashboardPage>
                               fontSize: 12,
                               fontWeight: FontWeight.w800,
                               color: item.isCompleted
-                                  ? AppColors.textSecondary.withValues(
+                                  ? AppPalette.textSecondary(context).withValues(
                                       alpha: 0.5,
                                     )
-                                  : AppColors.textPrimary,
+                                  : AppPalette.textPrimary(context),
                             ),
                           ),
                           Text(
@@ -1084,7 +1134,7 @@ class _DashboardPageState extends State<DashboardPage>
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w500,
-                              color: AppColors.textSecondary.withValues(
+                              color: AppPalette.textSecondary(context).withValues(
                                 alpha: item.isCompleted ? 0.3 : 0.6,
                               ),
                             ),
@@ -1122,10 +1172,10 @@ class _DashboardPageState extends State<DashboardPage>
                               fontSize: 13.5,
                               fontWeight: FontWeight.w700,
                               color: item.isCompleted
-                                  ? AppColors.textSecondary.withValues(
+                                  ? AppPalette.textSecondary(context).withValues(
                                       alpha: 0.6,
                                     )
-                                  : AppColors.textPrimary,
+                                  : AppPalette.textPrimary(context),
                               decoration: item.isCompleted
                                   ? TextDecoration.lineThrough
                                   : null,
@@ -1146,7 +1196,7 @@ class _DashboardPageState extends State<DashboardPage>
                                   ' · ',
                                   style: TextStyle(
                                     fontSize: 11.5,
-                                    color: AppColors.textSecondary.withValues(
+                                    color: AppPalette.textSecondary(context).withValues(
                                       alpha: 0.5,
                                     ),
                                   ),
@@ -1154,7 +1204,7 @@ class _DashboardPageState extends State<DashboardPage>
                                 Icon(
                                   Icons.location_on_outlined,
                                   size: 11,
-                                  color: AppColors.textSecondary.withValues(
+                                  color: AppPalette.textSecondary(context).withValues(
                                     alpha: 0.5,
                                   ),
                                 ),
@@ -1163,7 +1213,7 @@ class _DashboardPageState extends State<DashboardPage>
                                   item.location!,
                                   style: TextStyle(
                                     fontSize: 11.5,
-                                    color: AppColors.textSecondary.withValues(
+                                    color: AppPalette.textSecondary(context).withValues(
                                       alpha: 0.7,
                                     ),
                                   ),
@@ -1186,7 +1236,7 @@ class _DashboardPageState extends State<DashboardPage>
                         border: Border.all(
                           color: item.isCompleted
                               ? const Color(0xFF10B981)
-                              : AppColors.border,
+                              : AppPalette.border(context),
                           width: 2,
                         ),
                       ),
@@ -1257,10 +1307,10 @@ class _DashboardPageState extends State<DashboardPage>
                       children: [
                         Text(
                           d.title,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13.5,
                             fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
+                            color: AppPalette.textPrimary(context),
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -1270,7 +1320,7 @@ class _DashboardPageState extends State<DashboardPage>
                               d.course,
                               style: TextStyle(
                                 fontSize: 12,
-                                color: AppColors.textSecondary.withValues(
+                                color: AppPalette.textSecondary(context).withValues(
                                   alpha: 0.8,
                                 ),
                               ),
@@ -1280,7 +1330,7 @@ class _DashboardPageState extends State<DashboardPage>
                                 ' · ${d.courseCode}',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: AppColors.textSecondary.withValues(
+                                  color: AppPalette.textSecondary(context).withValues(
                                     alpha: 0.5,
                                   ),
                                 ),
@@ -1305,7 +1355,7 @@ class _DashboardPageState extends State<DashboardPage>
                       overdue
                           ? 'Overdue!'
                           : d.daysLeft == 0
-                          ? 'Today'
+                          ? AppStrings.today
                           : '${d.daysLeft}d',
                       style: TextStyle(
                         fontSize: 12,
@@ -1379,17 +1429,17 @@ class _DashboardPageState extends State<DashboardPage>
                       children: [
                         Text(
                           title,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
-                            color: AppColors.textPrimary,
+                            color: AppPalette.textPrimary(context),
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           subtitle,
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
+                          style: TextStyle(
+                            color: AppPalette.textSecondary(context),
                             fontSize: 13,
                           ),
                         ),
@@ -1424,8 +1474,8 @@ class _DashboardPageState extends State<DashboardPage>
                       const SizedBox(width: 12),
                       Text(
                         point,
-                        style: const TextStyle(
-                          color: AppColors.textPrimary,
+                        style: TextStyle(
+                          color: AppPalette.textPrimary(context),
                           fontSize: 13.5,
                           fontWeight: FontWeight.w600,
                         ),
@@ -1460,6 +1510,8 @@ class _ProfileSheet extends StatelessWidget {
   final VoidCallback onNavigateToBudget;
   final VoidCallback onOpenAppBlocker;
   final VoidCallback onNavigateToLeaderboard;
+  final VoidCallback onEditProfile;
+  final VoidCallback onOpenNotifications;
 
   const _ProfileSheet({
     required this.profile,
@@ -1470,122 +1522,150 @@ class _ProfileSheet extends StatelessWidget {
     required this.onNavigateToBudget,
     required this.onOpenAppBlocker,
     required this.onNavigateToLeaderboard,
+    required this.onEditProfile,
+    required this.onOpenNotifications,
   });
 
   @override
   Widget build(BuildContext context) {
-    final initial = profile.name
-        .split(' ')
-        .where((w) => w.isNotEmpty && w.length > 1)
-        .map((e) => e[0])
-        .take(2)
-        .join();
+    final settings = AppSettings.instance;
     return Container(
       margin: const EdgeInsets.only(top: 20),
-      decoration: const BoxDecoration(
-        color: Color(0xFFF8FAFF),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      decoration: BoxDecoration(
+        color: AppPalette.background(context),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(22, 12, 22, 32),
-        shrinkWrap: true,
-        children: [
-          Center(
-            child: Container(
-              width: 40,
-              height: 5,
-              decoration: BoxDecoration(
-                color: AppColors.border,
-                borderRadius: BorderRadius.circular(999),
+      child: ListenableBuilder(
+        listenable: settings,
+        builder: (context, _) => ListView(
+          padding: const EdgeInsets.fromLTRB(22, 12, 22, 32),
+          shrinkWrap: true,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: AppPalette.border(context),
+                  borderRadius: BorderRadius.circular(999),
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          // Avatar + name
-          Center(
-            child: Column(
-              children: [
-                Container(
-                  width: 74,
-                  height: 74,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppColors.purple, Color(0xFF7C3AED)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(22),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.purple.withValues(alpha: 0.25),
-                        blurRadius: 14,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
+            const SizedBox(height: 16),
+            // Avatar + name + edit
+            Center(
+              child: Column(
+                children: [
+                  AppAvatar(
+                    size: 74,
+                    borderRadius: 22,
+                    showEditBadge: true,
+                    onTap: onEditProfile,
                   ),
-                  child: Center(
-                    child: Text(
-                      initial,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w700,
-                      ),
+                  const SizedBox(height: 12),
+                  Text(
+                    profile.name,
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: AppPalette.textPrimary(context),
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  profile.name,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
+                  const SizedBox(height: 2),
+                  Text(
+                    profile.email,
+                    style: TextStyle(
+                      color: AppPalette.textSecondary(context),
+                      fontSize: 13,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  profile.email,
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 13,
+                  const SizedBox(height: 14),
+                  GestureDetector(
+                    onTap: onEditProfile,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 9,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [AppColors.purple, Color(0xFF7C3AED)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(999),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.purple.withValues(alpha: 0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.edit_rounded,
+                            color: Colors.white,
+                            size: 15,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            AppStrings.editProfile,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
           const SizedBox(height: 22),
           // Info cards
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.card,
+              color: AppPalette.card(context),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: AppColors.border.withValues(alpha: 0.4),
+                color: AppPalette.border(context).withValues(alpha: 0.4),
               ),
             ),
             child: Column(
               children: [
                 _infoRow(
+                  context,
                   Icons.school_rounded,
-                  'Department',
+                  AppStrings.department,
                   profile.department,
                 ),
-                const Divider(height: 20, color: AppColors.border),
+                Divider(height: 20, color: AppPalette.border(context)),
                 _infoRow(
+                  context,
                   Icons.auto_stories_rounded,
-                  'Semester',
+                  AppStrings.semester,
                   '${profile.semester} · ${profile.session}',
                 ),
-                const Divider(height: 20, color: AppColors.border),
+                Divider(height: 20, color: AppPalette.border(context)),
                 _infoRow(
+                  context,
                   Icons.badge_outlined,
-                  'Student ID',
+                  AppStrings.studentId,
                   profile.id.toUpperCase(),
                 ),
-                const Divider(height: 20, color: AppColors.border),
-                _infoRow(Icons.phone_rounded, 'Phone', profile.phone),
+                Divider(height: 20, color: AppPalette.border(context)),
+                _infoRow(
+                  context,
+                  Icons.phone_rounded,
+                  AppStrings.phone,
+                  profile.phone,
+                ),
               ],
             ),
           ),
@@ -1594,10 +1674,10 @@ class _ProfileSheet extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.card,
+              color: AppPalette.card(context),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: AppColors.border.withValues(alpha: 0.4),
+                color: AppPalette.border(context).withValues(alpha: 0.4),
               ),
             ),
             child: Column(
@@ -1611,20 +1691,22 @@ class _ProfileSheet extends StatelessWidget {
                       size: 18,
                     ),
                     const SizedBox(width: 8),
-                    const Text(
-                      'Enrolled Courses',
+                    Text(
+                      AppStrings.enrolledCourses,
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
+                        color: AppPalette.textPrimary(context),
                       ),
                     ),
                     const Spacer(),
                     Text(
-                      '${profile.enrolledCourses.length} subjects',
+                      '${profile.enrolledCourses.length} ${AppStrings.subjects}',
                       style: TextStyle(
                         fontSize: 12,
-                        color: AppColors.textSecondary.withValues(alpha: 0.7),
+                        color: AppPalette.textSecondary(context).withValues(
+                          alpha: 0.7,
+                        ),
                       ),
                     ),
                   ],
@@ -1672,9 +1754,9 @@ class _ProfileSheet extends StatelessWidget {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Text(
-                          'View in Planner',
-                          style: TextStyle(
+                        Text(
+                          AppStrings.viewInPlanner,
+                          style: const TextStyle(
                             color: AppColors.purple,
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -1698,70 +1780,75 @@ class _ProfileSheet extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.card,
+              color: AppPalette.card(context),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: AppColors.border.withValues(alpha: 0.4),
+                color: AppPalette.border(context).withValues(alpha: 0.4),
               ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   children: [
                     Icon(
                       Icons.explore_outlined,
-                      color: AppColors.textSecondary,
+                      color: AppPalette.textSecondary(context),
                       size: 18,
                     ),
-                    SizedBox(width: 8),
+                    const SizedBox(width: 8),
                     Text(
-                      'Quick Access',
+                      AppStrings.quickAccess,
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
+                        color: AppPalette.textPrimary(context),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
                 _quickLink(
+                  context,
                   Icons.local_fire_department_rounded,
-                  'Habit Tracker',
-                  'Check today\'s progress',
+                  AppStrings.habitTracker,
+                  AppStrings.checkTodayProgress,
                   const Color(0xFFF59E0B),
                   onNavigateToHabits,
                 ),
                 const SizedBox(height: 8),
                 _quickLink(
+                  context,
                   Icons.account_balance_wallet_rounded,
-                  'Expense Manager',
-                  'View budget & spending',
+                  AppStrings.expenseManager,
+                  AppStrings.viewBudget,
                   const Color(0xFF10B981),
                   onNavigateToBudget,
                 ),
                 const SizedBox(height: 8),
                 _quickLink(
+                  context,
                   Icons.leaderboard_rounded,
-                  'Leaderboard',
-                  'See class-wide rankings',
+                  AppStrings.leaderboard,
+                  AppStrings.seeRankings,
                   const Color(0xFF6366F1),
                   onNavigateToLeaderboard,
                 ),
                 const SizedBox(height: 8),
                 _quickLink(
+                  context,
                   Icons.block_rounded,
-                  'App Blocker',
-                  'Block distracting apps',
+                  AppStrings.appBlocker,
+                  AppStrings.blockApps,
                   const Color(0xFFDC2626),
                   onOpenAppBlocker,
                 ),
                 const SizedBox(height: 8),
                 _quickLink(
+                  context,
                   Icons.dashboard_rounded,
-                  'Twin Dashboard',
-                  'Back to home overview',
+                  AppStrings.twinDashboard,
+                  AppStrings.backHome,
                   AppColors.purple,
                   onNavigateToDashboard,
                 ),
@@ -1773,53 +1860,60 @@ class _ProfileSheet extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.card,
+              color: AppPalette.card(context),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: AppColors.border.withValues(alpha: 0.4),
+                color: AppPalette.border(context).withValues(alpha: 0.4),
               ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   children: [
                     Icon(
                       Icons.settings_outlined,
-                      color: AppColors.textSecondary,
+                      color: AppPalette.textSecondary(context),
                       size: 18,
                     ),
-                    SizedBox(width: 8),
+                    const SizedBox(width: 8),
                     Text(
-                      'Settings',
+                      AppStrings.settings,
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
+                        color: AppPalette.textPrimary(context),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
                 _settingRow(
+                  context,
                   Icons.palette_outlined,
-                  'App Theme',
-                  'Light',
-                  () {},
+                  AppStrings.appTheme,
+                  _themeLabel(settings.themeMode),
+                  () => _showThemeSheet(context),
                 ),
                 const SizedBox(height: 4),
                 _settingRow(
+                  context,
                   Icons.notifications_outlined,
-                  'Notifications',
-                  'On',
-                  () {},
+                  AppStrings.notifications,
+                  settings.notificationsEnabled
+                      ? AppStrings.on
+                      : AppStrings.off,
+                  onOpenNotifications,
                 ),
                 const SizedBox(height: 4),
                 _settingRow(
+                  context,
                   Icons.language_outlined,
-                  'Language',
-                  'English',
-                  () {},
+                  AppStrings.language,
+                  settings.locale.languageCode == 'bn'
+                      ? AppStrings.bengali
+                      : AppStrings.english,
+                  () => _showLanguageSheet(context),
                 ),
               ],
             ),
@@ -1831,9 +1925,12 @@ class _ProfileSheet extends StatelessWidget {
             child: OutlinedButton.icon(
               onPressed: onSignOut,
               icon: const Icon(Icons.logout_rounded, size: 18),
-              label: const Text(
-                'Sign Out',
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+              label: Text(
+                AppStrings.signOut,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
               ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: const Color(0xFFDC2626),
@@ -1849,12 +1946,186 @@ class _ProfileSheet extends StatelessWidget {
               ),
             ),
           ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _infoRow(IconData icon, String label, String value) {
+  String _themeLabel(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.dark:
+        return AppStrings.dark;
+      case ThemeMode.system:
+        return AppStrings.system;
+      case ThemeMode.light:
+        return AppStrings.light;
+    }
+  }
+
+  void _showThemeSheet(BuildContext context) {
+    final settings = AppSettings.instance;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _optionSheet(
+        context,
+        AppStrings.appTheme,
+        [
+          (
+            label: AppStrings.light,
+            icon: Icons.light_mode_rounded,
+            selected: settings.themeMode == ThemeMode.light,
+          ),
+          (
+            label: AppStrings.dark,
+            icon: Icons.dark_mode_rounded,
+            selected: settings.themeMode == ThemeMode.dark,
+          ),
+        ],
+        (index) {
+          settings.themeMode = index == 0
+              ? ThemeMode.light
+              : ThemeMode.dark;
+        },
+      ),
+    );
+  }
+
+  void _showLanguageSheet(BuildContext context) {
+    final settings = AppSettings.instance;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _optionSheet(
+        context,
+        AppStrings.language,
+        [
+          (
+            label: AppStrings.english,
+            icon: Icons.translate_rounded,
+            selected: settings.locale.languageCode == 'en',
+          ),
+          (
+            label: AppStrings.bengali,
+            icon: Icons.translate_rounded,
+            selected: settings.locale.languageCode == 'bn',
+          ),
+        ],
+        (index) {
+          settings.locale = Locale(index == 0 ? 'en' : 'bn');
+        },
+      ),
+    );
+  }
+
+  Widget _optionSheet(
+    BuildContext context,
+    String title,
+    List<({String label, IconData icon, bool selected})> options,
+    void Function(int index) onSelect,
+  ) {
+    return Container(
+      margin: const EdgeInsets.only(top: 20),
+      decoration: BoxDecoration(
+        color: AppPalette.background(context),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 20, 22, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: AppPalette.border(context),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppPalette.textPrimary(context),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ...List.generate(options.length, (i) {
+                final o = options[i];
+                return GestureDetector(
+                  onTap: () {
+                    onSelect(i);
+                    Navigator.of(context).pop();
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      color: o.selected
+                          ? AppColors.purple.withValues(alpha: 0.1)
+                          : AppPalette.card(context),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: o.selected
+                            ? AppColors.purple.withValues(alpha: 0.4)
+                            : AppPalette.border(context),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          o.icon,
+                          color: o.selected
+                              ? AppColors.purple
+                              : AppPalette.textSecondary(context),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            o.label,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppPalette.textPrimary(context),
+                            ),
+                          ),
+                        ),
+                        if (o.selected)
+                          const Icon(
+                            Icons.check_circle_rounded,
+                            color: AppColors.purple,
+                            size: 20,
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _infoRow(
+    BuildContext context,
+    IconData icon,
+    String label,
+    String value,
+  ) {
     return Row(
       children: [
         Container(
@@ -1873,16 +2144,16 @@ class _ProfileSheet extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
+                style: TextStyle(
+                  color: AppPalette.textSecondary(context),
                   fontSize: 11.5,
                 ),
               ),
               const SizedBox(height: 2),
               Text(
                 value,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
+                style: TextStyle(
+                  color: AppPalette.textPrimary(context),
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1895,6 +2166,7 @@ class _ProfileSheet extends StatelessWidget {
   }
 
   Widget _quickLink(
+    BuildContext context,
     IconData icon,
     String title,
     String subtitle,
@@ -1928,8 +2200,8 @@ class _ProfileSheet extends StatelessWidget {
                   ),
                   Text(
                     subtitle,
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
+                    style: TextStyle(
+                      color: AppPalette.textSecondary(context),
                       fontSize: 11.5,
                     ),
                   ),
@@ -1948,6 +2220,7 @@ class _ProfileSheet extends StatelessWidget {
   }
 
   Widget _settingRow(
+    BuildContext context,
     IconData icon,
     String label,
     String value,
@@ -1959,13 +2232,13 @@ class _ProfileSheet extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
           children: [
-            Icon(icon, color: AppColors.textSecondary, size: 20),
+            Icon(icon, color: AppPalette.textSecondary(context), size: 20),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 label,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
+                style: TextStyle(
+                  color: AppPalette.textPrimary(context),
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                 ),
@@ -1973,15 +2246,15 @@ class _ProfileSheet extends StatelessWidget {
             ),
             Text(
               value,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
+              style: TextStyle(
+                color: AppPalette.textSecondary(context),
                 fontSize: 13,
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(
+            Icon(
               Icons.chevron_right_rounded,
-              color: AppColors.textSecondary,
+              color: AppPalette.textSecondary(context),
               size: 18,
             ),
           ],
@@ -2051,7 +2324,7 @@ class _StatTile extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
+                  color: AppPalette.textPrimary(context),
                 ),
               ),
               const SizedBox(height: 1),
@@ -2059,7 +2332,7 @@ class _StatTile extends StatelessWidget {
                 label,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: AppColors.textSecondary.withValues(alpha: 0.8),
+                  color: AppPalette.textSecondary(context).withValues(alpha: 0.8),
                   fontSize: 11,
                 ),
               ),
@@ -2125,7 +2398,7 @@ class _StaticBorderBox extends StatelessWidget {
           borderRadius: BorderRadius.circular(
             (borderRadius - strokeWidth).clamp(0, borderRadius),
           ),
-          child: ColoredBox(color: AppColors.card, child: child),
+          child: ColoredBox(color: AppPalette.card(context), child: child),
         ),
       ),
     );
