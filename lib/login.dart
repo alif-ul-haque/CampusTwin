@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:campus_twin/theme.dart';
 import 'package:campus_twin/register.dart';
 import 'package:campus_twin/app_widget.dart';
@@ -56,9 +59,84 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  void _handleGoogleSignIn() {
-    // TODO: Hook up Google sign-in.
+  static const _accountsChannel =
+      MethodChannel('campus_twin/accounts');
+
+  bool _isGoogleLoading = false;
+
+  Future<List<String>> _getDeviceGoogleAccounts() async {
+    try {
+      final List<dynamic> raw =
+          await _accountsChannel.invokeMethod('getGoogleAccounts');
+      return raw.cast<String>();
+    } catch (_) {
+      return [];
+    }
   }
+
+  Future<void> _handleGoogleSignIn() async {
+    // 1. Fetch device accounts
+    setState(() => _isGoogleLoading = true);
+    final accounts = await _getDeviceGoogleAccounts();
+    setState(() => _isGoogleLoading = false);
+
+    if (!mounted) return;
+
+    // 2. Show custom picker sheet
+    final choice = await showModalBottomSheet<_AccountChoice>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _GoogleAccountSheet(emails: accounts),
+    );
+
+    if (choice == null) return; // user tapped outside / cancelled
+
+    // 3. Perform sign-in
+    setState(() => _isGoogleLoading = true);
+    try {
+      final googleSignIn = GoogleSignIn();
+
+      GoogleSignInAccount? googleUser;
+      // Always signOut first so the account picker appears fresh,
+      // letting the user confirm/pick the account they tapped in our sheet.
+      await googleSignIn.signOut();
+      googleUser = await googleSignIn.signIn();
+
+      if (googleUser == null) {
+        if (mounted) setState(() => _isGoogleLoading = false);
+        return;
+      }
+
+      final googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      await FirebaseAuth.instance.signInWithCredential(credential);
+
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const DashboardPage()),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Google sign-in failed: ${e.toString()}'),
+          backgroundColor: const Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isGoogleLoading = false);
+    }
+  }
+
 
   void _goToRegister() {
     Navigator.push(
@@ -292,7 +370,10 @@ class _LoginPageState extends State<LoginPage> {
           const SizedBox(height: 18),
           _buildDivider(context),
           const SizedBox(height: 18),
-          AppGoogleButton(onPressed: _handleGoogleSignIn),
+          AppGoogleButton(
+            onPressed: _handleGoogleSignIn,
+            isLoading: _isGoogleLoading,
+          ),
         ],
       ),
     );
@@ -335,6 +416,229 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Account choice model
+// =============================================================================
+
+class _AccountChoice {
+  final String? email;
+  final bool addNew;
+  const _AccountChoice.existing(this.email) : addNew = false;
+  const _AccountChoice.add()
+      : email = null,
+        addNew = true;
+}
+
+// =============================================================================
+// Custom Google account picker bottom sheet
+// =============================================================================
+
+class _GoogleAccountSheet extends StatelessWidget {
+  final List<String> emails;
+  const _GoogleAccountSheet({required this.emails});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasAccounts = emails.isNotEmpty;
+
+    return SafeArea(
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ── Handle bar ──────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.only(top: 10, bottom: 4),
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.black12,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            // ── Google G logo + title ────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36, height: 36,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFFE0E0E0)),
+                    ),
+                    child: const Center(
+                      child: Text('G',
+                          style: TextStyle(
+                            color: Color(0xFF4285F4),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          )),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Choose an account',
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1F2937))),
+                      Text(
+                        hasAccounts
+                            ? 'Select a Google account to continue'
+                            : 'No Google accounts found on this device',
+                        style: const TextStyle(
+                            fontSize: 12, color: Color(0xFF6B7280)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1, indent: 24, endIndent: 24),
+            const SizedBox(height: 4),
+            // ── Account tiles ────────────────────────────────────────────
+            if (hasAccounts)
+              ...emails.map((email) => _AccountTile(
+                    email: email,
+                    onTap: () => Navigator.of(context)
+                        .pop(_AccountChoice.existing(email)),
+                  )),
+            // ── Add account ──────────────────────────────────────────────
+            _ActionTile(
+              icon: Icons.add_circle_outline_rounded,
+              iconColor: const Color(0xFF4285F4),
+              label: hasAccounts ? 'Add another account' : 'Add account',
+              onTap: () =>
+                  Navigator.of(context).pop(const _AccountChoice.add()),
+            ),
+            const Divider(height: 1, indent: 24, endIndent: 24),
+            const SizedBox(height: 4),
+            // ── Cancel ───────────────────────────────────────────────────
+            _ActionTile(
+              icon: Icons.close_rounded,
+              iconColor: const Color(0xFF6B7280),
+              label: 'Cancel',
+              onTap: () => Navigator.of(context).pop(null),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Reusable tiles ────────────────────────────────────────────────────────────
+
+class _AccountTile extends StatelessWidget {
+  final String email;
+  final VoidCallback onTap;
+  const _AccountTile({required this.email, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = [
+      const Color(0xFF4F46E5), const Color(0xFF0891B2),
+      const Color(0xFF059669), const Color(0xFFD97706),
+      const Color(0xFFDC2626), const Color(0xFF7C3AED),
+    ];
+    final color = colors[email.hashCode.abs() % colors.length];
+    final initial = email.isNotEmpty ? email[0].toUpperCase() : '?';
+
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        child: Row(
+          children: [
+            Container(
+              width: 42, height: 42,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              child: Center(
+                child: Text(initial,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16)),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(email,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1F2937))),
+                  const Text('Google Account',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                color: Color(0xFFD1D5DB), size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionTile extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final VoidCallback onTap;
+  const _ActionTile({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 42, height: 42,
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: iconColor, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: label == 'Cancel'
+                        ? const Color(0xFF6B7280)
+                        : const Color(0xFF1F2937))),
+          ],
+        ),
       ),
     );
   }
