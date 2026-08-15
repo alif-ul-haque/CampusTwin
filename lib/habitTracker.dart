@@ -1,6 +1,11 @@
+// ignore_for_file: unused_element
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:campus_twin/models/app_models.dart';
 import 'package:campus_twin/theme.dart';
 import 'package:campus_twin/app_widget.dart';
 import 'package:campus_twin/twinDashboard.dart';
@@ -141,12 +146,19 @@ class _HabitRepository {
     ),
   ];
 
-  static const List<double> scoreWeek = [66, 71, 58, 69, 74, 82, 78];
+  static List<double> scoreWeek = [66, 71, 58, 69, 74, 82, 78];
 
   static List<AIInsight> insights = [];
   static bool insightsLoaded = false;
 
   static Future<void> loadInsights() async {
+    // Static insights for now — the AI pipeline (_generateInsightsFromAi)
+    // is kept wired up but only starts fetching once real data exists.
+    insights = _staticInsights();
+    insightsLoaded = true;
+  }
+
+  static Future<void> _generateInsightsFromAi() async {
     final data = metrics
         .map((m) => {
               'title': m.title,
@@ -186,10 +198,109 @@ Respond with ONLY the JSON array.
           );
         }).toList();
       } catch (_) {
-        // Keep insights empty on parse failure — UI shows the empty state.
+        // Keep insights empty on parse failure — fall back below.
       }
     }
+    if (insights.isEmpty) {
+      // Gemini unavailable or returned unusable data — show the static set.
+      insights = _staticInsights();
+    }
     insightsLoaded = true;
+  }
+
+  static List<AIInsight> _staticInsights() => [
+    AIInsight(
+      icon: Icons.nightlight_round,
+      color: const Color(0xFF6366F1),
+      tag: AppStrings.sleepInsightTag,
+      text: AppStrings.sleepInsight,
+    ),
+    AIInsight(
+      icon: Icons.trending_up_rounded,
+      color: const Color(0xFFF59E0B),
+      tag: AppStrings.screenInsightTag,
+      text: AppStrings.screenInsight,
+    ),
+    AIInsight(
+      icon: Icons.self_improvement_rounded,
+      color: const Color(0xFF10B981),
+      tag: AppStrings.stressInsightTag,
+      text: AppStrings.stressInsight,
+    ),
+  ];
+
+  /// Derives a 0..100 stress score from the current habit values.
+  /// Lower habit fulfillment (or higher screen time) pushes the score up.
+  static int _derivedStressScore() {
+    if (metrics.isEmpty) return 50;
+    var total = 0.0;
+    for (final m in metrics) {
+      final ratio = m.target > 0 ? m.current / m.target : 0;
+      total += ratio.clamp(0.0, 2.0);
+    }
+    final avg = total / metrics.length;
+    return ((avg / 2) * 100).round().clamp(0, 100);
+  }
+
+  static String _levelFor(int score) {
+    if (score < 40) return 'low';
+    if (score <= 70) return 'moderate';
+    return 'high';
+  }
+
+  static Future<void> _savePrediction(List<AIInsight> result) async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null || result.isEmpty) return;
+      final score = _derivedStressScore();
+      await FirebaseFirestore.instance.collection('stress_predictions').add({
+        'user_id': uid,
+        'score': score,
+        'level': _levelFor(score),
+        'explanation': result.map((i) => '${i.tag}: ${i.text}').join(' | '),
+        'predicted_at': Timestamp.now(),
+      });
+    } catch (_) {
+      // Offline or permission issue — the in-memory copy still works.
+    }
+  }
+
+  static Future<void> _restoreFromDb() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      final snap = await FirebaseFirestore.instance
+          .collection('stress_predictions')
+          .where('user_id', isEqualTo: uid)
+          .orderBy('predicted_at', descending: true)
+          .limit(1)
+          .get();
+      if (snap.docs.isEmpty) return;
+      final explanation = snap.docs.first.data()['explanation'] as String?;
+      if (explanation == null || explanation.trim().isEmpty) return;
+      insights = explanation
+          .split(' | ')
+          .where((s) => s.trim().isNotEmpty)
+          .map((s) {
+            final parts = s.split(': ');
+            if (parts.length == 1) {
+              return AIInsight(
+                  icon: Icons.auto_awesome_rounded,
+                  color: AppColors.purple,
+                  tag: 'Insight',
+                  text: s);
+            }
+            return AIInsight(
+              icon: Icons.auto_awesome_rounded,
+              color: AppColors.purple,
+              tag: parts.first,
+              text: parts.skip(1).join(': '),
+            );
+          })
+          .toList();
+    } catch (_) {
+      // No saved prediction yet — leave insights empty.
+    }
   }
 
   static IconData _iconFor(String key) => switch (key) {
@@ -210,15 +321,167 @@ Respond with ONLY the JSON array.
         _ => AppColors.purple,
       };
 
+  static double _valueOf(HabitType type) {
+    final i = metrics.indexWhere((m) => m.type == type);
+    if (i == -1) return 0;
+    final m = metrics[i];
+    return m.lowerIsBetter ? m.current / m.target : m.current;
+  }
+
   static void updateMetric(HabitType type, double value) {
     final i = metrics.indexWhere((m) => m.type == type);
     if (i == -1) return;
     metrics[i] = metrics[i].copyWith(current: value);
+    habitScore = (_averageProgress() * 100).round();
+  }
+
+  /// Upserts today's `habit_logs` row from the current metric values.
+  static Future<void> persistToday() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      final now = DateTime.now();
+      final logDate = DateTime(now.year, now.month, now.day);
+      final logs = FirebaseFirestore.instance.collection('habit_logs');
+      final data = {
+        'user_id': uid,
+        'log_date': Timestamp.fromDate(logDate),
+        'sleep_hours': _valueOf(HabitType.sleep),
+        'exercise_minutes': _valueOf(HabitType.exercise).round(),
+        'water_intake_liter': _valueOf(HabitType.water),
+        'screen_time_hours': _valueOf(HabitType.screenTime),
+      };
+      final existing = await logs
+          .where('user_id', isEqualTo: uid)
+          .where('log_date', isEqualTo: Timestamp.fromDate(logDate))
+          .limit(1)
+          .get();
+      if (existing.docs.isNotEmpty) {
+        await existing.docs.first.reference.update(data);
+      } else {
+        await logs.add(data);
+      }
+    } catch (_) {
+      // Offline — the in-memory copy still drives the UI.
+    }
+  }
+
+  static double _averageProgress() {
+    if (metrics.isEmpty) return 0;
+    var sum = 0.0;
+    for (final m in metrics) {
+      sum += m.progress;
+    }
+    return sum / metrics.length;
   }
 
   static void checkIn() {
     checkedInToday = true;
     checkInStreak += 1;
+  }
+
+  /// Replaces the mock snapshots with the user's real last 7 days of
+  /// `habit_logs`, today's check-in state, and their latest `daily_checkins`
+  /// streak. Falls back silently to the in-memory seed when the user has no
+  /// data yet or the request fails.
+  static Future<void> loadFromDb() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+
+      final logs = await FirebaseFirestore.instance
+          .collection('habit_logs')
+          .where('user_id', isEqualTo: uid)
+          .orderBy('log_date', descending: true)
+          .limit(7)
+          .get();
+      if (logs.docs.isNotEmpty) {
+        final byWeekday = <int, HabitLog>{};
+        for (final doc in logs.docs) {
+          final log = HabitLog.fromMap(doc.id, doc.data());
+          byWeekday.putIfAbsent(log.logDate.weekday, () => log);
+        }
+        HabitLog? latest;
+        HabitLog? todayLog;
+        for (final doc in logs.docs) {
+          final log = HabitLog.fromMap(doc.id, doc.data());
+          if (todayLog == null && !log.logDate.isBefore(today)) todayLog = log;
+          if (latest == null || log.logDate.isAfter(latest.logDate)) {
+            latest = log;
+          }
+        }
+        double valueFor(HabitType type, HabitLog log) => switch (type) {
+              HabitType.sleep => log.sleepHours,
+              HabitType.water => log.waterIntakeLiter,
+              HabitType.exercise => log.exerciseMinutes.toDouble(),
+              HabitType.screenTime => log.screenTimeHours,
+              HabitType.score => 1.0,
+            };
+        final applied = todayLog ?? latest;
+        if (applied != null) {
+          metrics = [
+            for (final m in metrics)
+              HabitMetric(
+                type: m.type,
+                title: m.title,
+                icon: m.icon,
+                color: m.color,
+                current: valueFor(m.type, applied),
+                target: m.target,
+                unit: m.unit,
+                weekValues: [
+                  for (var wd = DateTime.monday; wd <= DateTime.sunday; wd++)
+                    byWeekday[wd] != null
+                        ? valueFor(m.type, byWeekday[wd]!)
+                        : m.weekValues[wd - 1],
+                ],
+                streak: m.streak,
+                lowerIsBetter: m.lowerIsBetter,
+              ),
+          ];
+          scoreWeek = [
+            for (var wd = DateTime.monday; wd <= DateTime.sunday; wd++)
+              _dayProgress(wd, byWeekday[wd]),
+          ];
+          habitScore = (_averageProgress() * 100).round();
+        }
+      }
+
+      final checkins = await FirebaseFirestore.instance
+          .collection('daily_checkins')
+          .where('user_id', isEqualTo: uid)
+          .orderBy('checkin_date', descending: true)
+          .limit(1)
+          .get();
+      if (checkins.docs.isNotEmpty) {
+        final checkin = DailyCheckIn.fromMap(checkins.docs.first.id, checkins.docs.first.data());
+        checkedInToday = !checkin.checkinDate.isBefore(today);
+        checkInStreak = checkin.dayNumber;
+      }
+    } catch (_) {
+      // Seed data stays active when offline or if the user has no rows yet.
+    }
+  }
+
+  /// Progress (0..1) toward the daily goal for a given weekday, or the
+  /// in-memory value when that day has no log.
+  static double _dayProgress(int weekday, HabitLog? log) {
+    if (log == null) return scoreWeek[weekday - 1] / 100;
+    var sum = 0.0;
+    for (final m in metrics) {
+      final value = switch (m.type) {
+        HabitType.sleep => log.sleepHours,
+        HabitType.water => log.waterIntakeLiter,
+        HabitType.exercise => log.exerciseMinutes.toDouble(),
+        HabitType.screenTime => log.screenTimeHours,
+        HabitType.score => 1.0,
+      };
+      if (m.target <= 0) continue;
+      sum += (value / m.target).clamp(0.0, 1.0);
+    }
+    return metrics.isEmpty ? 0 : sum / metrics.length;
   }
 }
 
