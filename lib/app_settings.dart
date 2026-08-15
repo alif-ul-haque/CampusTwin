@@ -262,7 +262,7 @@ class AppAvatar extends StatelessWidget {
           width: size,
           height: size,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _gradientBox(s, context),
+          errorBuilder: (_, _, _) => _gradientBox(s, context),
         ),
       );
     } else {

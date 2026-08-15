@@ -1085,10 +1085,12 @@ class _DashboardPageState extends State<DashboardPage>
 
   Widget _buildScheduleList() {
     final items = _DashboardRepository.schedule;
-    if (items.isEmpty)
+    if (items.isEmpty) {
       return _emptyCard(Icons.event_available_rounded, 'No schedule today.');
-    if (items.every((s) => s.isCompleted))
+    }
+    if (items.every((s) => s.isCompleted)) {
       return _emptyCard(Icons.task_alt_rounded, 'All done for today!');
+    }
     return Column(
       children: items.map((item) {
         final isClass = item.type == 'Class' || item.type == 'Lab';
@@ -1260,8 +1262,9 @@ class _DashboardPageState extends State<DashboardPage>
 
   Widget _buildDeadlineList() {
     final items = _DashboardRepository.deadlines;
-    if (items.isEmpty)
+    if (items.isEmpty) {
       return _emptyCard(Icons.event_note_rounded, 'No upcoming deadlines.');
+    }
     return Column(
       children: items.map((d) {
         final urgent = d.isUrgent;
@@ -2449,18 +2452,19 @@ class _AnimatedBorderBox extends StatelessWidget {
   final Color fillColor;
   final List<Color> colors;
 
-  const _AnimatedBorderBox({
+    const _AnimatedBorderBox({
     required this.animation,
     required this.child,
     this.borderRadius = 16,
     this.strokeWidth = 1.6,
     this.fillColor = AppColors.card,
     this.colors = const [
-      Color(0xFF1E40AF),
-      Color(0xFF3B82F6),
-      Color(0xFF1E40AF),
+      Color(0xFFF1E40AF),
+      Color(0xFFF3B82F6),
+      Color(0xFFF1E40AF),
     ],
   });
+
 
   @override
   Widget build(BuildContext context) {

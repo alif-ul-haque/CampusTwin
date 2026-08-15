@@ -320,7 +320,7 @@ class _StatusCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: pulse,
-      builder: (_, __) {
+      builder: (_, _) {
         final glow = active
             ? Color.lerp(const Color(0xFF16A34A), const Color(0xFF4ADE80), pulse.value)!
             : AppColors.purple;
@@ -513,7 +513,7 @@ class _AppGrid extends StatelessWidget {
                   child: Image.memory(
                     app.icon,
                     width: 46, height: 46,
-                    errorBuilder: (_, __, ___) => Container(
+                    errorBuilder: (_, _, _) => Container(
                       width: 46, height: 46,
                       decoration: BoxDecoration(
                         color: AppColors.purple.withValues(alpha: 0.1),

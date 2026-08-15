@@ -1036,15 +1036,18 @@ class _AnimatedBorderBox extends StatelessWidget {
   final Color fillColor;
   final List<Color> colors;
 
-  const _AnimatedBorderBox({
+    const _AnimatedBorderBox({
     required this.animation,
     required this.child,
     this.borderRadius = 16,
     this.strokeWidth = 1.6,
     this.fillColor = AppColors.card,
-    this.colors = const [Color(0xFF1E40AF), Color(0xFF3B82F6), Color(0xFF1E40AF)],
+    this.colors = const [
+      Color(0xFFF1E40AF),
+      Color(0xFFF3B82F6),
+      Color(0xFFF1E40AF),
+    ],
   });
-
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
