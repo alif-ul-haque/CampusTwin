@@ -1,0 +1,106 @@
+rules_version = '2';
+
+// =============================================================================
+// Ownership model: almost every collection has a `user_id` field that must
+// equal the signed-in user's uid. `assignments` and `study_sessions` are
+// owned indirectly (via course_id / plan_id) — client code must fetch the
+// parent doc to prove ownership before reading/writing children in a
+// production app; for now these two are read-only to any signed-in user
+// and write-restricted to the Cloud Function / admin SDK. Tighten as needed.
+// `achievements` is a read-only public catalog.
+// =============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    // users/{uid} — doc id IS the uid
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId);
+      allow delete: if false; // handle account deletion via a Cloud Function
+    }
+
+    match /expense_categories/{docId} {
+      allow read, write: if signedIn(); // shared reference data
+    }
+
+    match /expenses/{docId} {
+      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+    }
+
+    match /budgets/{docId} {
+      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+    }
+
+    match /courses/{docId} {
+      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+    }
+
+    match /assignments/{docId} {
+      allow read: if signedIn();
+      allow write: if false; // write via Cloud Function that checks course ownership
+    }
+
+    match /study_plans/{docId} {
+      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+    }
+
+    match /study_sessions/{docId} {
+      allow read: if signedIn();
+      allow write: if false; // write via Cloud Function that checks plan ownership
+    }
+
+    match /habit_logs/{docId} {
+      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+    }
+
+    match /stress_predictions/{docId} {
+      allow read: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow write: if false; // written only by the backend/model pipeline
+    }
+
+    match /ai_chats/{docId} {
+      allow read, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      allow update: if false; // chat turns are immutable once written
+    }
+
+    match /notifications/{docId} {
+      allow read, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      // Clients may only flip is_read — everything else is server-written.
+      allow update: if signedIn() && resource.data.user_id == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['is_read']);
+      allow create: if false; // notifications are pushed by the backend
+    }
+
+    match /daily_checkins/{docId} {
+      allow read, create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
+
+    match /achievements/{docId} {
+      allow read: if signedIn();
+      allow write: if false; // seeded by an admin script
+    }
+
+    match /user_achievements/{docId} {
+      allow read: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      allow update, delete: if false;
+    }
+  }
+}
