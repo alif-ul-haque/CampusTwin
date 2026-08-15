@@ -60,7 +60,14 @@ service cloud.firestore {
 
     match /study_sessions/{docId} {
       allow read: if signedIn();
-      allow write: if false; // write via Cloud Function that checks plan ownership
+      // Client writes are allowed when the session belongs to a plan the
+      // signed-in user owns (checked against the plan's user_id).
+      allow create: if signedIn()
+        && request.resource.data.plan_id is string
+        && get(/databases/$(database)/documents/study_plans/$(request.resource.data.plan_id)).data.user_id == request.auth.uid;
+      allow update, delete: if signedIn()
+        && resource.data.plan_id is string
+        && get(/databases/$(database)/documents/study_plans/$(resource.data.plan_id)).data.user_id == request.auth.uid;
     }
 
     match /habit_logs/{docId} {
@@ -70,7 +77,8 @@ service cloud.firestore {
 
     match /stress_predictions/{docId} {
       allow read: if signedIn() && resource.data.user_id == request.auth.uid;
-      allow write: if false; // written only by the backend/model pipeline
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      allow update, delete: if false; // predictions are immutable once written
     }
 
     match /ai_chats/{docId} {

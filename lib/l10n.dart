@@ -192,6 +192,7 @@ class AppStrings {
       _t('Add study task', 'স্টাডি কাজ যোগ করুন');
   static String get close => _t('Close', 'বন্ধ');
   static String get taskTitle => _t('Task title', 'কাজের শিরোনাম');
+  static String get taskUntitled => _t('Untitled task', 'নামহীন কাজ');
   static String get taskTitleHint =>
       _t('What do you want to accomplish?', 'আপনি কী অর্জন করতে চান?');
   static String get enterTaskTitle =>

@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:campus_twin/app_settings.dart';
+import 'package:campus_twin/models/app_models.dart';
 import 'package:campus_twin/l10n.dart';
 import 'package:campus_twin/services/gemini_service.dart';
 import 'package:campus_twin/theme.dart';
@@ -30,24 +34,82 @@ class AssistantMessage {
 
 class _AssistantRepository {
   static List<AssistantMessage> chatMessages = [];
+  static bool _historyLoaded = false;
   static const _systemPrompt =
       'You are Twinny, a friendly campus assistant for students. '
       'Answer concisely and helpfully about academics, schedule, and campus life.';
 
-  static void initChat() {
-    if (chatMessages.isNotEmpty) return;
-    chatMessages = [
-      AssistantMessage(
-        id: 'a1',
-        text: AppStrings.assistantGreeting('Alif'),
-        isUser: false,
-        timestamp: DateTime.now(),
-      ),
-    ];
+  static String _greetingText() {
+    final name = AppSettings.instance.profile.name.trim();
+    return AppStrings.assistantGreeting(name.isEmpty ? 'Alif' : name);
+  }
+
+  /// Loads the user's chat history from `ai_chats` once per session.
+  /// Falls back to a greeting bubble when the user has no history yet or the
+  /// request fails (offline).
+  static Future<void> initChat() async {
+    if (_historyLoaded) return;
+    _historyLoaded = true;
+    if (chatMessages.isEmpty) {
+      chatMessages = [
+        AssistantMessage(
+          id: 'greeting',
+          text: _greetingText(),
+          isUser: false,
+          timestamp: DateTime.now(),
+        ),
+      ];
+    }
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      final snap = await FirebaseFirestore.instance
+          .collection('ai_chats')
+          .where('user_id', isEqualTo: uid)
+          .orderBy('created_at', descending: true)
+          .limit(50)
+          .get();
+      if (snap.docs.isEmpty) return;
+      final msgs = <AssistantMessage>[];
+      for (final doc in snap.docs.reversed) {
+        final chat = AIChat.fromMap(doc.id, doc.data());
+        msgs.add(AssistantMessage(
+          id: '${doc.id}-q',
+          text: chat.question,
+          isUser: true,
+          timestamp: chat.createdAt,
+        ));
+        msgs.add(AssistantMessage(
+          id: '${doc.id}-a',
+          text: chat.response,
+          isUser: false,
+          timestamp: chat.createdAt,
+        ));
+      }
+      chatMessages = msgs;
+    } catch (_) {
+      // Offline — keep the greeting bubble.
+    }
+  }
+
+  /// Persists one Q&A turn as a single `ai_chats` document.
+  static Future<void> _persistTurn(String question, String response) async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      await FirebaseFirestore.instance.collection('ai_chats').add({
+        'user_id': uid,
+        'question': question,
+        'response': response,
+        'created_at': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {
+      // Offline — the turn still shows in the session chat.
+    }
   }
 
   static Future<void> sendMessage(String text, VoidCallback onUpdate) async {
-    initChat();
+    await initChat();
     chatMessages.add(AssistantMessage(
       id: 'a${chatMessages.length + 1}',
       text: text,
@@ -66,6 +128,8 @@ class _AssistantRepository {
       timestamp: DateTime.now(),
     ));
     onUpdate();
+
+    await _persistTurn(text, reply);
   }
 }
 
@@ -94,7 +158,9 @@ class _AssistantTabState extends State<AssistantTab> {
   @override
   void initState() {
     super.initState();
-    _AssistantRepository.initChat();
+    _AssistantRepository.initChat().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override

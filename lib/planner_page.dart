@@ -1,9 +1,9 @@
-import 'dart:convert';
-
 import 'package:campus_twin/app_settings.dart';
 import 'package:campus_twin/l10n.dart';
-import 'package:campus_twin/services/gemini_service.dart';
+import 'package:campus_twin/models/app_models.dart';
 import 'package:campus_twin/theme.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 // The UI talks only to this contract. Replace MockPlannerRepository with an
@@ -485,92 +485,25 @@ class MockPlannerRepository implements PlannerRepository {
   @override
   Future<List<StudyBlock>> generateWeek(DateTime weekStart) async {
     _seed();
-    final weekEnd = weekStart.add(const Duration(days: 7));
-    final existing = _tasks
-        .where((t) => !t.date.isBefore(weekStart) && t.date.isBefore(weekEnd))
-        .toList();
-
-    final subjectsJson = _subjects
-        .map((s) => {
-              'id': s.id,
-              'name': s.name,
-              'code': s.code,
-              'weekly_target_minutes': s.weeklyTargetMinutes,
-            })
-        .toList();
-
-    final existingJson = existing
-        .map((t) => {
-              'day_offset': t.date.difference(weekStart).inDays,
-              'start_time': _apiTime(t.startMinute),
-              'end_time': _apiTime(t.endMinute),
-              'title': t.title,
-            })
-        .toList();
-
-    final prompt = '''
-Generate a balanced weekly study plan as a JSON array. Each item must have:
-title (string), day_offset (0-6, 0=Monday), start_time ("HH:MM" 24h),
-end_time ("HH:MM"), type (one of: study, assignment, revision, class, exam_prep),
-subject_id (one of the given subject ids, or null).
-
-Subjects: ${jsonEncode(subjectsJson)}
-Existing tasks this week (avoid overlapping these times): ${jsonEncode(existingJson)}
-
-Suggest 2-4 new study sessions that don't overlap existing tasks, spread across
-free days, prioritizing subjects with less time already planned. Respond with
-ONLY the JSON array, no other text.
-''';
-
-    final raw = await GeminiService.instance.generateJson(prompt);
-    final suggestions = <StudyBlockDraft>[];
-
-    if (raw != null) {
-      try {
-        final list = jsonDecode(raw) as List;
-        for (final item in list) {
-          try {
-            final map = item as Map<String, dynamic>;
-            final offset = (_asInt(map['day_offset']) ?? 0).clamp(0, 6);
-            suggestions.add(StudyBlockDraft(
-              title: _requiredString(map, 'title'),
-              date: weekStart.add(Duration(days: offset)),
-              startMinute: _parseClock(_requiredString(map, 'start_time')),
-              endMinute: _parseClock(_requiredString(map, 'end_time')),
-              type: PlannerTaskType.fromApi(map['type'] as String?),
-              subjectId: _optionalString(map['subject_id']),
-            ));
-          } catch (_) {
-            // Skip just this malformed item; keep the valid ones.
-          }
-        }
-      } catch (_) {
-        // Malformed response — fall through to the static fallback below.
-      }
-    }
-
-    // Fallback if Gemini is unavailable or returned something unusable.
-    if (suggestions.isEmpty) {
-      suggestions.addAll([
-        StudyBlockDraft(
-          title: AppStrings.mockGenTask1,
-          date: weekStart.add(const Duration(days: 1)),
-          startMinute: 9 * 60,
-          endMinute: 10 * 60,
-          type: PlannerTaskType.study,
-          subjectId: _subjects.first.id,
-        ),
-        StudyBlockDraft(
-          title: AppStrings.mockGenTask2,
-          date: weekStart.add(const Duration(days: 5)),
-          startMinute: 10 * 60,
-          endMinute: 11 * 60,
-          type: PlannerTaskType.revision,
-          subjectId: _subjects[2].id,
-        ),
-      ]);
-    }
-
+    await _latency();
+    final suggestions = [
+      StudyBlockDraft(
+        title: AppStrings.mockGenTask1,
+        date: weekStart.add(const Duration(days: 1)),
+        startMinute: 9 * 60,
+        endMinute: 10 * 60,
+        type: PlannerTaskType.study,
+        subjectId: _subjects.first.id,
+      ),
+      StudyBlockDraft(
+        title: AppStrings.mockGenTask2,
+        date: weekStart.add(const Duration(days: 5)),
+        startMinute: 10 * 60,
+        endMinute: 11 * 60,
+        type: PlannerTaskType.revision,
+        subjectId: _subjects[2].id,
+      ),
+    ];
     for (final draft in suggestions) {
       try {
         _validateDraft(draft);
@@ -595,12 +528,270 @@ ONLY the JSON array, no other text.
       } on PlannerReadOnlyException {
         // Suggestions are never inserted into dates that have already passed.
       } on FormatException {
-        // Skip malformed suggestion from the model.
+        // Skip malformed suggestion.
       }
     }
     return fetchWeek(weekStart);
   }
 }
+
+/// Firestore-backed [PlannerRepository].
+///
+/// Subjects come from the user's `courses` collection and tasks are persisted
+/// as `study_sessions` docs owned by the user's active `study_plans` doc.
+class FirestorePlannerRepository implements PlannerRepository {
+  FirestorePlannerRepository({FirebaseFirestore? firestore})
+      : _db = firestore ?? FirebaseFirestore.instance;
+
+  final FirebaseFirestore _db;
+
+  static const _palette = [
+    0xFF4F46E5,
+    0xFF0891B2,
+    0xFFD97706,
+    0xFF059669,
+    0xFF2563EB,
+    0xFF7C3AED,
+    0xFFDB2777,
+    0xFFEA580C,
+  ];
+
+  String _requireUid() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      throw StateError(
+          'Planner needs a signed-in user. (FirestorePlannerRepository)');
+    }
+    return uid;
+  }
+
+  /// Returns the user's most recent study plan, creating an empty one if the
+  /// user has never generated a plan before.
+  Future<String> _ensurePlan() async {
+    final uid = _requireUid();
+    final plans = await _db
+        .collection('study_plans')
+        .where('user_id', isEqualTo: uid)
+        .orderBy('generated_date', descending: true)
+        .limit(1)
+        .get();
+    if (plans.docs.isNotEmpty) return plans.docs.first.id;
+    final ref = await _db.collection('study_plans').add({
+      'user_id': uid,
+      'generated_date': Timestamp.now(),
+      'total_hours': 0,
+      'status': 'active',
+    });
+    return ref.id;
+  }
+
+  Future<Map<String, Course>> _loadCourses() async {
+    final uid = _requireUid();
+    final snapshot = await _db
+        .collection('courses')
+        .where('user_id', isEqualTo: uid)
+        .get();
+    return {
+      for (final doc in snapshot.docs) doc.id: Course.fromMap(doc.id, doc.data()),
+    };
+  }
+
+  /// Maps a `study_sessions` doc into a [StudyBlock] for the planner UI.
+  /// The doc is expected to carry the planner extension fields written by
+  /// [createTask]; when a doc was created by another tool, sensible defaults
+  /// keep it renderable.
+  StudyBlock _toBlock(String id, Map<String, dynamic> data,
+      Map<String, Course> courses) {
+    final sessionDate = (data['session_date'] as Timestamp?)?.toDate();
+    final day = sessionDate == null ? _dateOnly(DateTime.now()) : _dateOnly(sessionDate);
+    final startMinute = _asInt(data['start_minute']) ?? 9 * 60;
+    final endMinute = _asInt(data['end_minute']) ?? startMinute + 60;
+    final courseId = _optionalString(data['course_id']);
+    final course = courseId == null ? null : courses[courseId];
+    return StudyBlock(
+      id: id,
+      title: _optionalString(data['title']) ?? AppStrings.taskUntitled,
+      date: day,
+      startMinute: startMinute,
+      endMinute: endMinute,
+      type: PlannerTaskType.fromApi(data['type']),
+      completed: data['completed'] == true,
+      subjectId: courseId,
+      subjectName: course?.courseTitle,
+      subjectCode: course?.courseCode,
+      note: _optionalString(data['note']),
+    );
+  }
+
+  @override
+  Future<List<PlannerSubject>> fetchSubjects() async {
+    final courses = await _loadCourses();
+    final subjects = <PlannerSubject>[];
+    for (final entry in courses.entries) {
+      subjects.add(PlannerSubject(
+        id: entry.key,
+        name: entry.value.courseTitle,
+        code: entry.value.courseCode,
+        colorValue: _palette[entry.key.hashCode.abs() % _palette.length],
+        weeklyTargetMinutes: 240,
+      ));
+    }
+    return subjects;
+  }
+
+  @override
+  Future<List<StudyBlock>> fetchWeek(DateTime weekStart) async {
+    final planId = await _ensurePlan();
+    final courses = await _loadCourses();
+    final start = _dateOnly(weekStart);
+    final end = start.add(const Duration(days: 7));
+    final snapshot = await _db
+        .collection('study_sessions')
+        .where('plan_id', isEqualTo: planId)
+        .get();
+    final blocks = <StudyBlock>[];
+    for (final doc in snapshot.docs) {
+      final block = _toBlock(doc.id, doc.data(), courses);
+      if (block.date.isBefore(start) || !block.date.isBefore(end)) continue;
+      blocks.add(block);
+    }
+    blocks.sort(_sortTasks);
+    return blocks;
+  }
+
+  String _priorityFor(PlannerTaskType type) {
+    switch (type) {
+      case PlannerTaskType.classSession:
+        return 'low';
+      case PlannerTaskType.assignment:
+      case PlannerTaskType.examPrep:
+        return 'high';
+      default:
+        return 'medium';
+    }
+  }
+
+  Future<void> _validateDraftAgainstWeek(StudyBlockDraft draft) async {
+    final title = draft.title.trim();
+    if (title.isEmpty) {
+      throw const FormatException('Task title is required.');
+    }
+    if (title.length > 80) {
+      throw const FormatException('Task title is too long.');
+    }
+    if (draft.endMinute <= draft.startMinute) {
+      throw const FormatException('Task must end after it starts.');
+    }
+    final startOfToday = _dateOnly(DateTime.now());
+    if (draft.date.isBefore(startOfToday)) {
+      throw PlannerReadOnlyException();
+    }
+    final existing = await fetchWeek(draft.date);
+    for (final task in existing) {
+      if (task.date != _dateOnly(draft.date)) continue;
+      final overlap =
+          draft.startMinute < task.endMinute && task.startMinute < draft.endMinute;
+      if (overlap) {
+        throw PlannerConflictException(
+          AppSettings.instance.locale.languageCode == 'bn'
+              ? 'এই সময়ে ইতিমধ্যে একটি কাজ আছে।'
+              : 'This time already has a task.',
+        );
+      }
+    }
+  }
+
+  @override
+  Future<StudyBlock> createTask(StudyBlockDraft draft) async {
+    await _validateDraftAgainstWeek(draft);
+    final courses = await _loadCourses();
+    final course = draft.subjectId == null ? null : courses[draft.subjectId];
+    final planId = await _ensurePlan();
+    final day = _dateOnly(draft.date);
+    final ref = await _db.collection('study_sessions').add({
+      'plan_id': planId,
+      'course_id': draft.subjectId,
+      'session_date': Timestamp.fromDate(day),
+      'duration_minutes': draft.endMinute - draft.startMinute,
+      'priority': _priorityFor(draft.type),
+      'completed': false,
+      // Planner UI extensions (kept beside the ER fields).
+      'title': draft.title.trim(),
+      'type': draft.type.apiValue,
+      'start_minute': draft.startMinute,
+      'end_minute': draft.endMinute,
+      'note': draft.note,
+      'user_id': _requireUid(),
+    });
+    return StudyBlock(
+      id: ref.id,
+      title: draft.title.trim(),
+      date: day,
+      startMinute: draft.startMinute,
+      endMinute: draft.endMinute,
+      type: draft.type,
+      completed: false,
+      subjectId: draft.subjectId,
+      subjectName: course?.courseTitle,
+      subjectCode: course?.courseCode,
+      note: draft.note,
+    );
+  }
+
+  @override
+  Future<StudyBlock> setCompleted(String taskId, bool completed) async {
+    await _db.collection('study_sessions').doc(taskId).update({
+      'completed': completed,
+    });
+    final doc = await _db.collection('study_sessions').doc(taskId).get();
+    if (!doc.exists) throw const FormatException('Task not found.');
+    return _toBlock(doc.id, doc.data()!, await _loadCourses());
+  }
+
+  @override
+  Future<void> deleteTask(String taskId) async {
+    await _db.collection('study_sessions').doc(taskId).delete();
+  }
+
+  @override
+  Future<List<StudyBlock>> generateWeek(DateTime weekStart) async {
+    final subjects = await fetchSubjects();
+    final suggestions = <StudyBlockDraft>[];
+    if (subjects.isNotEmpty) {
+      suggestions.add(StudyBlockDraft(
+        title: AppStrings.mockGenTask1,
+        date: weekStart.add(const Duration(days: 2)),
+        startMinute: 9 * 60,
+        endMinute: 10 * 60,
+        type: PlannerTaskType.study,
+        subjectId: subjects.first.id,
+      ));
+      if (subjects.length > 2) {
+        suggestions.add(StudyBlockDraft(
+          title: AppStrings.mockGenTask2,
+          date: weekStart.add(const Duration(days: 5)),
+          startMinute: 10 * 60,
+          endMinute: 11 * 60,
+          type: PlannerTaskType.revision,
+          subjectId: subjects[2].id,
+        ));
+      }
+    }
+    for (final draft in suggestions) {
+      try {
+        await createTask(draft);
+      } on PlannerConflictException {
+        // A generated suggestion never overwrites or overlaps a user's task.
+      } on PlannerReadOnlyException {
+        // Suggestions are never inserted into dates that have already passed.
+      } on FormatException {
+        // Skip malformed suggestion.
+      }
+    }
+    return fetchWeek(weekStart);
+  }
+}
+
 
 class PlannerPage extends StatefulWidget {
   const PlannerPage({super.key, this.repository});
