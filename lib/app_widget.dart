@@ -80,6 +80,67 @@ class AppTextField extends StatelessWidget {
   }
 }
 
+/// Shared styled dropdown field, matching [AppTextField].
+class AppDropdownField<T> extends StatelessWidget {
+  const AppDropdownField({
+    super.key,
+    required this.value,
+    required this.hint,
+    required this.icon,
+    required this.items,
+    required this.onChanged,
+  });
+
+  final T? value;
+  final String hint;
+  final IconData icon;
+  final List<DropdownMenuItem<T>> items;
+  final ValueChanged<T?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButtonFormField<T>(
+      initialValue: value,
+      isExpanded: true,
+      icon: const Icon(Icons.keyboard_arrow_down_rounded),
+      style: TextStyle(color: AppPalette.textPrimary(context), fontSize: 15),
+      dropdownColor: AppPalette.card(context),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(
+          color: AppPalette.textSecondary(context),
+          fontSize: 14,
+        ),
+        prefixIcon: Padding(
+          padding: const EdgeInsetsDirectional.only(start: 16, end: 12),
+          child: Icon(icon, color: AppPalette.textSecondary(context), size: 20),
+        ),
+        prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+        filled: true,
+        fillColor: AppPalette.inputFill(context),
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 4,
+          horizontal: 16,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: AppPalette.border(context)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: AppPalette.border(context)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.purple, width: 1.5),
+        ),
+      ),
+      items: items,
+      onChanged: onChanged,
+    );
+  }
+}
+
 /// Shared primary purple button.
 class AppPrimaryButton extends StatelessWidget {
   const AppPrimaryButton({

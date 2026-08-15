@@ -47,6 +47,7 @@ class AppStrings {
   static String get semester => _t('Semester', 'সেমিস্টার');
   static String get studentId => _t('Student ID', 'স্টুডেন্ট আইডি');
   static String get phone => _t('Phone', 'ফোন');
+  static String get notSet => _t('Not set', 'সেট করা হয়নি');
   static String get enrolledCourses =>
       _t('Enrolled Courses', 'নিবন্ধিত কোর্স');
   static String get subjects => _t('subjects', 'বিষয়');
@@ -641,10 +642,88 @@ class AppStrings {
           'প্রোফাইল সেট করতে নিচের ফর্মটি পূরণ করুন।');
   static String get fullName => _t('Full Name', 'পুরো নাম');
   static String get nameHint => _t('Alex Rahman', 'Alex Rahman');
+  static String get selectDepartment =>
+      _t('Select department', 'বিভাগ নির্বাচন করুন');
+  static String get selectSemester =>
+      _t('Select semester', 'সেমিস্টার নির্বাচন করুন');
+  static String get pleaseSelect =>
+      _t('Please select an option.', 'একটি অপশন নির্বাচন করুন।');
   static String get passwordHelper =>
       _t('Use at least 6 characters with a mix of letters and numbers.',
           'অক্ষর ও সংখ্যার মিশ্রণে কমপক্ষে ৬ অক্ষর ব্যবহার করুন।');
   static String get alreadyHaveAccount =>
       _t('Already have an account? ', 'ইতিমধ্যে অ্যাকাউন্ট আছে? ');
   static String get signInLink => _t('Sign In', 'সাইন ইন');
+
+  // ── Auth ───────────────────────────────────────────────────────────────
+  static String get authAccountCreated => _t(
+      'Account created! A verification link has been sent to your email. Verify it, then sign in.',
+      'অ্যাকাউন্ট তৈরি হয়েছে! আপনার ইমেইলে একটি ভেরিফিকেশন লিংক পাঠানো হয়েছে। ভেরিফাই করে সাইন ইন করুন।');
+  static String get emailNotVerified => _t(
+      'Please verify your email first. A new verification link was sent to your inbox.',
+      'আগে আপনার ইমেইল ভেরিফাই করুন। একটি নতুন ভেরিফিকেশন লিংক আপনার ইনবক্সে পাঠানো হয়েছে।');
+  static String get authInvalidEmail =>
+      _t('Invalid email address.', 'ইমেইল ঠিকানা সঠিক নয়।');
+  static String get authUserNotFound =>
+      _t('No account found with this email.', 'এই ইমেইলে কোনো অ্যাকাউন্ট পাওয়া যায়নি।');
+  static String get authWrongPassword =>
+      _t('Incorrect password. Please try again.', 'পাসওয়ার্ড সঠিক নয়। আবার চেষ্টা করুন।');
+  static String get authEmailInUse => _t(
+      'An account with this email already exists.',
+      'এই ইমেইলে ইতিমধ্যে একটি অ্যাকাউন্ট আছে।');
+  static String get authWeakPassword =>
+      _t('Password is too weak.', 'পাসওয়ার্ড খুব দুর্বল।');
+  static String get authTooManyRequests => _t(
+      'Too many attempts. Please wait a while.',
+      'অনেকবার চেষ্টা করা হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।');
+  static String get authNetworkError => _t(
+      'Network error. Check your connection.',
+      'নেটওয়ার্ক সমস্যা। আপনার ইন্টারনেট সংযোগ পরীক্ষা করুন।');
+  static String get authOperationNotAllowed => _t(
+      'Email/Password sign-in is not enabled on this app.',
+      'এই অ্যাপে ইমেইল/পাসওয়ার্ড সাইন-ইন সক্ষম নেই।');
+  static String get authFailed =>
+      _t('Sign-in failed. Please try again.', 'সাইন-ইন ব্যর্থ হয়েছে। আবার চেষ্টা করুন।');
+  static String get enterEmailToReset => _t(
+      'Enter your email to receive a password reset link.',
+      'পাসওয়ার্ড রিসেট লিংক পেতে আপনার ইমেইল লিখুন।');
+  static String get sendResetLink =>
+      _t('Send Reset Link', 'রিসেট লিংক পাঠান');
+  static String get resetEmailSent => _t(
+      'Password reset email sent. Check your inbox.',
+      'পাসওয়ার্ড রিসেট ইমেইল পাঠানো হয়েছে। আপনার ইনবক্স দেখুন।');
+
+  /// Accepts MIST student emails (202314100@student.mist.ac.bd),
+  /// Gmail (user@gmail.com) and any other standard email address.
+  static bool isValidEmail(String value) {
+    final v = value.trim().toLowerCase();
+    final student = RegExp(r'^\d{7,10}@student\.mist\.ac\.bd$');
+    final gmail = RegExp(r'^[a-z0-9._%+-]+@gmail\.com$');
+    final generic = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+    return student.hasMatch(v) || gmail.hasMatch(v) || generic.hasMatch(v);
+  }
+
+  static String authErrorMessage(String code) {
+    switch (code) {
+      case 'invalid-email':
+        return authInvalidEmail;
+      case 'user-not-found':
+        return authUserNotFound;
+      case 'wrong-password':
+      case 'invalid-credential':
+        return authWrongPassword;
+      case 'email-already-in-use':
+        return authEmailInUse;
+      case 'weak-password':
+        return authWeakPassword;
+      case 'too-many-requests':
+        return authTooManyRequests;
+      case 'network-request-failed':
+        return authNetworkError;
+      case 'operation-not-allowed':
+        return authOperationNotAllowed;
+      default:
+        return '$authFailed ($code)';
+    }
+  }
 }

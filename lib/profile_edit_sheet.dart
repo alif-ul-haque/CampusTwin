@@ -1,12 +1,17 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:campus_twin/app_settings.dart';
 import 'package:campus_twin/theme.dart';
 import 'package:campus_twin/l10n.dart';
 import 'package:campus_twin/app_widget.dart';
+import 'package:campus_twin/repositories/app_repositories.dart';
 
-/// Full-screen profile editor. Saves straight into [AppSettings] (mock).
+/// Full-screen profile editor. Reads/writes the `users/{uid}` Firestore
+/// doc; profile photos go to Firebase Storage and the download URL is
+/// stored in `profile_photo`.
 class ProfileEditPage extends StatefulWidget {
   const ProfileEditPage({super.key});
 
@@ -22,6 +27,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   late final TextEditingController _department;
   late final TextEditingController _semester;
   bool _saving = false;
+  bool _photoChanged = false;
 
   @override
   void initState() {
@@ -33,6 +39,28 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     _phone = TextEditingController(text: p.phone);
     _department = TextEditingController(text: p.department);
     _semester = TextEditingController(text: p.semester);
+    _loadFromDb();
+  }
+
+  /// Prefills the form from Firestore so the editor always shows the
+  /// database values (not the in-memory mock).
+  Future<void> _loadFromDb() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      final appUser = await UserRepository().getById(user.uid);
+      if (appUser == null || !mounted) return;
+      _name.text = appUser.fullName.isEmpty ? _name.text : appUser.fullName;
+      _email.text = appUser.email.isEmpty ? _email.text : appUser.email;
+      _department.text =
+          appUser.department.isEmpty ? _department.text : appUser.department;
+      if (appUser.semester > 0) {
+        _semester.text = '${appUser.semester}';
+      }
+      setState(() {});
+    } catch (e) {
+      debugPrint('Failed to load profile from DB: $e');
+    }
   }
 
   @override
@@ -64,6 +92,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
       final Uint8List bytes = await file.readAsBytes();
       if (!mounted) return;
       AppSettings.instance.setAvatarBytes(bytes);
+      _photoChanged = true;
     } else if (result == _PhotoChoice.preset) {
       if (!mounted) return;
       _pickPreset();
@@ -79,30 +108,80 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     );
     if (index != null && mounted) {
       AppSettings.instance.setAvatarPreset(index);
+      _photoChanged = true;
     }
+  }
+
+  /// Encodes the picked photo as a base64 data-URI so it can live inside
+  /// the Firestore `profile_photo` field (no Firebase Storage / billing).
+  String? _encodePhoto() {
+    final bytes = AppSettings.instance.avatarBytes;
+    if (bytes == null) return null;
+    return 'data:image/jpeg;base64,${base64Encode(bytes)}';
   }
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    final p = AppSettings.instance.profile;
-    AppSettings.instance.profile = p.copyWith(
-      name: _name.text.trim().isEmpty ? p.name : _name.text.trim(),
-      nickname: _nickname.text.trim().isEmpty ? p.nickname : _nickname.text.trim(),
-      email: _email.text.trim().isEmpty ? p.email : _email.text.trim(),
-      phone: _phone.text.trim().isEmpty ? p.phone : _phone.text.trim(),
-      department: _department.text.trim().isEmpty
+    try {
+      final p = AppSettings.instance.profile;
+      final name = _name.text.trim().isEmpty ? p.name : _name.text.trim();
+      final email = _email.text.trim().isEmpty ? p.email : _email.text.trim();
+      final department = _department.text.trim().isEmpty
           ? p.department
-          : _department.text.trim(),
-      semester: _semester.text.trim().isEmpty ? p.semester : _semester.text.trim(),
-    );
-    await Future.delayed(const Duration(milliseconds: 250));
-    if (!mounted) return;
-    setState(() => _saving = false);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(AppStrings.saved),
-      behavior: SnackBarBehavior.floating,
-    ));
-    Navigator.of(context).pop();
+          : _department.text.trim();
+      final semesterText = _semester.text.trim().isEmpty
+          ? p.semester
+          : _semester.text.trim();
+
+      // Persist to Firestore (users/{uid}) — silently skips when no
+      // authenticated user, keeping the old local-only behaviour.
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final patch = <String, dynamic>{
+          'full_name': name,
+          'email': email,
+          'department': department,
+          'semester': int.tryParse(semesterText.replaceAll(RegExp(r'[^\d]'), '')) ?? 1,
+        };
+        if (_photoChanged) {
+          final dataUri = _encodePhoto();
+          if (dataUri != null) patch['profile_photo'] = dataUri;
+        }
+        await UserRepository().update(user.uid, patch);
+        if (patch['profile_photo'] != null) {
+          AppSettings.instance
+              .setPhotoUrl(patch['profile_photo']! as String);
+        }
+      }
+
+      // Update the in-memory profile so the whole UI reflects the save.
+      AppSettings.instance.profile = p.copyWith(
+        name: name,
+        nickname: _nickname.text.trim().isEmpty
+            ? p.nickname
+            : _nickname.text.trim(),
+        email: email,
+        phone: _phone.text.trim().isEmpty ? p.phone : _phone.text.trim(),
+        department: department,
+        semester: semesterText,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AppStrings.saved),
+        behavior: SnackBarBehavior.floating,
+      ));
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('${AppStrings.authFailed} (${e.toString()})'),
+        backgroundColor: const Color(0xFFDC2626),
+        behavior: SnackBarBehavior.floating,
+      ));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override

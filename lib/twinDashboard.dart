@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:campus_twin/theme.dart';
 import 'package:campus_twin/planner_page.dart';
 import 'package:campus_twin/habitTracker.dart';
@@ -11,6 +12,7 @@ import 'package:campus_twin/app_settings.dart';
 import 'package:campus_twin/l10n.dart';
 import 'package:campus_twin/notifications_page.dart';
 import 'package:campus_twin/profile_edit_sheet.dart';
+import 'package:campus_twin/repositories/app_repositories.dart';
 
 // =============================================================================
 // DATA MODELS
@@ -237,9 +239,24 @@ class _DashboardPageState extends State<DashboardPage>
   }
 
   Future<void> _loadData() async {
+    await _loadProfileFromDb();
     _DashboardRepository.loadDashboard();
     await Future.delayed(const Duration(milliseconds: 300));
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  /// Loads the signed-in user's Firestore profile into [AppSettings] so
+  /// the dashboard shows database data instead of the mock profile.
+  Future<void> _loadProfileFromDb() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      final appUser = await UserRepository().getById(user.uid);
+      if (appUser == null || !mounted) return;
+      AppSettings.instance.applyAppUser(appUser);
+    } catch (e) {
+      debugPrint('Failed to load profile from DB: $e');
+    }
   }
 
   void _openHabitTracker() {
@@ -276,6 +293,7 @@ class _DashboardPageState extends State<DashboardPage>
         },
         onSignOut: () {
           Navigator.of(context).pop();
+          FirebaseAuth.instance.signOut();
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const WelcomePage()),
             (_) => false,
@@ -619,7 +637,7 @@ class _DashboardPageState extends State<DashboardPage>
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        p.nickname,
+                        p.name,
                         style: TextStyle(
                           color: AppPalette.textPrimary(context),
                           fontSize: 17,
@@ -1656,18 +1674,22 @@ class _ProfileSheet extends StatelessWidget {
                   '${profile.semester} · ${profile.session}',
                 ),
                 Divider(height: 20, color: AppPalette.border(context)),
+                // Student ID / Phone are NOT in the database schema yet —
+                // show "Not set" instead of mock data, tap to edit later.
                 _infoRow(
                   context,
                   Icons.badge_outlined,
                   AppStrings.studentId,
-                  profile.id.toUpperCase(),
+                  AppStrings.notSet,
+                  onTap: onEditProfile,
                 ),
                 Divider(height: 20, color: AppPalette.border(context)),
                 _infoRow(
                   context,
                   Icons.phone_rounded,
                   AppStrings.phone,
-                  profile.phone,
+                  profile.phone.isEmpty ? AppStrings.notSet : profile.phone,
+                  onTap: onEditProfile,
                 ),
               ],
             ),
@@ -2127,9 +2149,10 @@ class _ProfileSheet extends StatelessWidget {
     BuildContext context,
     IconData icon,
     String label,
-    String value,
-  ) {
-    return Row(
+    String value, {
+    VoidCallback? onTap,
+  }) {
+    final row = Row(
       children: [
         Container(
           width: 36,
@@ -2156,7 +2179,9 @@ class _ProfileSheet extends StatelessWidget {
               Text(
                 value,
                 style: TextStyle(
-                  color: AppPalette.textPrimary(context),
+                  color: value == AppStrings.notSet
+                      ? AppPalette.textSecondary(context)
+                      : AppPalette.textPrimary(context),
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
@@ -2164,7 +2189,19 @@ class _ProfileSheet extends StatelessWidget {
             ],
           ),
         ),
+        if (onTap != null)
+          const Icon(
+            Icons.chevron_right_rounded,
+            color: Color(0xFF9CA3AF),
+            size: 18,
+          ),
       ],
+    );
+    if (onTap == null) return row;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: row,
     );
   }
 
