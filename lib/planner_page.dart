@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:campus_twin/app_settings.dart';
 import 'package:campus_twin/l10n.dart';
+import 'package:campus_twin/services/gemini_service.dart';
 import 'package:campus_twin/theme.dart';
 import 'package:flutter/material.dart';
 
@@ -482,25 +485,92 @@ class MockPlannerRepository implements PlannerRepository {
   @override
   Future<List<StudyBlock>> generateWeek(DateTime weekStart) async {
     _seed();
-    await Future<void>.delayed(const Duration(milliseconds: 650));
-    final suggestions = [
-      StudyBlockDraft(
-        title: AppStrings.mockGenTask1,
-        date: weekStart.add(const Duration(days: 1)),
-        startMinute: 9 * 60,
-        endMinute: 10 * 60,
-        type: PlannerTaskType.study,
-        subjectId: _subjects.first.id,
-      ),
-      StudyBlockDraft(
-        title: AppStrings.mockGenTask2,
-        date: weekStart.add(const Duration(days: 5)),
-        startMinute: 10 * 60,
-        endMinute: 11 * 60,
-        type: PlannerTaskType.revision,
-        subjectId: _subjects[2].id,
-      ),
-    ];
+    final weekEnd = weekStart.add(const Duration(days: 7));
+    final existing = _tasks
+        .where((t) => !t.date.isBefore(weekStart) && t.date.isBefore(weekEnd))
+        .toList();
+
+    final subjectsJson = _subjects
+        .map((s) => {
+              'id': s.id,
+              'name': s.name,
+              'code': s.code,
+              'weekly_target_minutes': s.weeklyTargetMinutes,
+            })
+        .toList();
+
+    final existingJson = existing
+        .map((t) => {
+              'day_offset': t.date.difference(weekStart).inDays,
+              'start_time': _apiTime(t.startMinute),
+              'end_time': _apiTime(t.endMinute),
+              'title': t.title,
+            })
+        .toList();
+
+    final prompt = '''
+Generate a balanced weekly study plan as a JSON array. Each item must have:
+title (string), day_offset (0-6, 0=Monday), start_time ("HH:MM" 24h),
+end_time ("HH:MM"), type (one of: study, assignment, revision, class, exam_prep),
+subject_id (one of the given subject ids, or null).
+
+Subjects: ${jsonEncode(subjectsJson)}
+Existing tasks this week (avoid overlapping these times): ${jsonEncode(existingJson)}
+
+Suggest 2-4 new study sessions that don't overlap existing tasks, spread across
+free days, prioritizing subjects with less time already planned. Respond with
+ONLY the JSON array, no other text.
+''';
+
+    final raw = await GeminiService.instance.generateJson(prompt);
+    final suggestions = <StudyBlockDraft>[];
+
+    if (raw != null) {
+      try {
+        final list = jsonDecode(raw) as List;
+        for (final item in list) {
+          try {
+            final map = item as Map<String, dynamic>;
+            final offset = (_asInt(map['day_offset']) ?? 0).clamp(0, 6);
+            suggestions.add(StudyBlockDraft(
+              title: _requiredString(map, 'title'),
+              date: weekStart.add(Duration(days: offset)),
+              startMinute: _parseClock(_requiredString(map, 'start_time')),
+              endMinute: _parseClock(_requiredString(map, 'end_time')),
+              type: PlannerTaskType.fromApi(map['type'] as String?),
+              subjectId: _optionalString(map['subject_id']),
+            ));
+          } catch (_) {
+            // Skip just this malformed item; keep the valid ones.
+          }
+        }
+      } catch (_) {
+        // Malformed response — fall through to the static fallback below.
+      }
+    }
+
+    // Fallback if Gemini is unavailable or returned something unusable.
+    if (suggestions.isEmpty) {
+      suggestions.addAll([
+        StudyBlockDraft(
+          title: AppStrings.mockGenTask1,
+          date: weekStart.add(const Duration(days: 1)),
+          startMinute: 9 * 60,
+          endMinute: 10 * 60,
+          type: PlannerTaskType.study,
+          subjectId: _subjects.first.id,
+        ),
+        StudyBlockDraft(
+          title: AppStrings.mockGenTask2,
+          date: weekStart.add(const Duration(days: 5)),
+          startMinute: 10 * 60,
+          endMinute: 11 * 60,
+          type: PlannerTaskType.revision,
+          subjectId: _subjects[2].id,
+        ),
+      ]);
+    }
+
     for (final draft in suggestions) {
       try {
         _validateDraft(draft);
@@ -524,6 +594,8 @@ class MockPlannerRepository implements PlannerRepository {
         // A generated suggestion never overwrites or overlaps a user's task.
       } on PlannerReadOnlyException {
         // Suggestions are never inserted into dates that have already passed.
+      } on FormatException {
+        // Skip malformed suggestion from the model.
       }
     }
     return fetchWeek(weekStart);

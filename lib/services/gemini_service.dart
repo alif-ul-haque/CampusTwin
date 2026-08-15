@@ -85,4 +85,52 @@ class GeminiService {
       return 'Error: $e';
     }
   }
+
+  /// One-shot JSON generation — no conversation history, forces JSON output.
+  Future<String?> generateJson(String prompt, {String? systemPrompt}) async {
+    if (_key.isEmpty) return null;
+
+    final url = Uri.parse('$_baseUrl/$_model:generateContent?key=$_key');
+    final body = {
+      if (systemPrompt != null)
+        'system_instruction': {
+          'parts': [
+            {'text': systemPrompt},
+          ],
+        },
+      'contents': [
+        {
+          'role': 'user',
+          'parts': [
+            {'text': prompt},
+          ],
+        },
+      ],
+      'generationConfig': {
+        'temperature': 0.4,
+        'maxOutputTokens': 1024,
+        'responseMimeType': 'application/json',
+      },
+    };
+
+    try {
+      final res = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 30));
+      if (res.statusCode != 200) return null;
+
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final parts = data['candidates']?[0]?['content']?['parts'] as List? ?? [];
+      for (final part in parts) {
+        if (part is Map && part['text'] is String) return part['text'] as String;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
 }
