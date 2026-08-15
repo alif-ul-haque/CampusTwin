@@ -1,9 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:campus_twin/theme.dart';
 import 'package:campus_twin/app_widget.dart';
 import 'package:campus_twin/twinDashboard.dart';
 import 'package:campus_twin/l10n.dart';
 import 'package:campus_twin/app_settings.dart';
+import 'package:campus_twin/services/gemini_service.dart';
 
 // =============================================================================
 // DATA MODELS
@@ -140,26 +143,72 @@ class _HabitRepository {
 
   static const List<double> scoreWeek = [66, 71, 58, 69, 74, 82, 78];
 
-  static final List<AIInsight> insights = [
-    AIInsight(
-      icon: Icons.nightlight_round,
-      color: Color(0xFF6366F1),
-      tag: AppStrings.sleepInsightTag,
-      text: AppStrings.sleepInsight,
-    ),
-    AIInsight(
-      icon: Icons.trending_up_rounded,
-      color: Color(0xFFF59E0B),
-      tag: AppStrings.screenInsightTag,
-      text: AppStrings.screenInsight,
-    ),
-    AIInsight(
-      icon: Icons.self_improvement_rounded,
-      color: Color(0xFF10B981),
-      tag: AppStrings.stressInsightTag,
-      text: AppStrings.stressInsight,
-    ),
-  ];
+  static List<AIInsight> insights = [];
+  static bool insightsLoaded = false;
+
+  static Future<void> loadInsights() async {
+    final data = metrics
+        .map((m) => {
+              'title': m.title,
+              'current': m.current,
+              'target': m.target,
+              'unit': m.unit,
+              'lower_is_better': m.lowerIsBetter,
+              'week_values': m.weekValues,
+              'streak': m.streak,
+            })
+        .toList();
+
+    final prompt = '''
+You are a wellness coach analyzing a student's weekly habit data (JSON below).
+Return a JSON array of exactly 3 short insights. Each item must have:
+tag (a short 1-2 word category, e.g. "Sleep Pattern"), text (one encouraging
+or corrective sentence, under 25 words), icon (one of: sleep, water, exercise,
+screen, stress, general).
+
+Habit data: ${jsonEncode(data)}
+
+Respond with ONLY the JSON array.
+''';
+
+    final raw = await GeminiService.instance.generateJson(prompt);
+    if (raw != null) {
+      try {
+        final list = jsonDecode(raw) as List;
+        insights = list.map((item) {
+          final map = item as Map<String, dynamic>;
+          final iconKey = map['icon'] as String? ?? 'general';
+          return AIInsight(
+            icon: _iconFor(iconKey),
+            color: _colorFor(iconKey),
+            tag: map['tag'] as String? ?? '',
+            text: map['text'] as String? ?? '',
+          );
+        }).toList();
+      } catch (_) {
+        // Keep insights empty on parse failure — UI shows the empty state.
+      }
+    }
+    insightsLoaded = true;
+  }
+
+  static IconData _iconFor(String key) => switch (key) {
+        'sleep' => Icons.nightlight_round,
+        'water' => Icons.water_drop_rounded,
+        'exercise' => Icons.fitness_center_rounded,
+        'screen' => Icons.smartphone_rounded,
+        'stress' => Icons.self_improvement_rounded,
+        _ => Icons.auto_awesome_rounded,
+      };
+
+  static Color _colorFor(String key) => switch (key) {
+        'sleep' => const Color(0xFF6366F1),
+        'water' => const Color(0xFF06B6D4),
+        'exercise' => const Color(0xFF10B981),
+        'screen' => const Color(0xFFF59E0B),
+        'stress' => const Color(0xFF10B981),
+        _ => AppColors.purple,
+      };
 
   static void updateMetric(HabitType type, double value) {
     final i = metrics.indexWhere((m) => m.type == type);
@@ -197,6 +246,9 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
     super.initState();
     
     _checkInPulseController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: true);
+    _HabitRepository.loadInsights().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -268,6 +320,9 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                     final v = double.tryParse(controller.text.trim());
                     if (v != null) {
                       setState(() => _HabitRepository.updateMetric(metric.type, v));
+                      _HabitRepository.loadInsights().then((_) {
+                        if (mounted) setState(() {});
+                      });
                     }
                     Navigator.of(sheetContext).pop();
                   },
@@ -682,6 +737,26 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
 
   // ── 6. AI insights ────────────────────────────────────────────────────
   Widget _buildInsightsSection() {
+    if (!_HabitRepository.insightsLoaded) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
+      );
+    }
+    if (_HabitRepository.insights.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Text(
+          AppSettings.instance.locale.languageCode == 'bn'
+              ? 'এই মুহূর্তে কোনো ইনসাইট পাওয়া যাচ্ছে না।'
+              : 'No insights available right now.',
+          style: TextStyle(
+            color: AppPalette.textSecondary(context),
+            fontSize: 12.5,
+          ),
+        ),
+      );
+    }
     return Column(
       children: _HabitRepository.insights.map((insight) => Padding(
             padding: const EdgeInsets.only(bottom: 10),
@@ -1036,15 +1111,18 @@ class _AnimatedBorderBox extends StatelessWidget {
   final Color fillColor;
   final List<Color> colors;
 
-  const _AnimatedBorderBox({
+    const _AnimatedBorderBox({
     required this.animation,
     required this.child,
     this.borderRadius = 16,
     this.strokeWidth = 1.6,
     this.fillColor = AppColors.card,
-    this.colors = const [Color(0xFF1E40AF), Color(0xFF3B82F6), Color(0xFF1E40AF)],
+    this.colors = const [
+      Color(0xFFF1E40AF),
+      Color(0xFFF3B82F6),
+      Color(0xFFF1E40AF),
+    ],
   });
-
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(

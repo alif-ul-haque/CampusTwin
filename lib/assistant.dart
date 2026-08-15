@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:campus_twin/l10n.dart';
+import 'package:campus_twin/services/gemini_service.dart';
 import 'package:campus_twin/theme.dart';
 
 // =============================================================================
@@ -21,18 +22,17 @@ class AssistantMessage {
 }
 
 // =============================================================================
-// MOCK REPOSITORY — Assistant chat
+// ASSISTANT REPOSITORY — Gemini-backed chat
 //
-// Every method body should be replaced with a real API call. The public method
-// signatures stay the same so the UI never changes.
-//
-// TODO: Replace with real backend:
-//   GET  /assistant/{userId}/messages   → List<AssistantMessage>
-//   POST /assistant/{userId}/messages   → { text }  →  AssistantMessage (bot reply)
+// The public method signatures stay the same so the UI never changes.
+// Replies are generated live via GeminiService (gemini-2.0-flash).
 // =============================================================================
 
 class _AssistantRepository {
   static List<AssistantMessage> chatMessages = [];
+  static const _systemPrompt =
+      'You are Twinny, a friendly campus assistant for students. '
+      'Answer concisely and helpfully about academics, schedule, and campus life.';
 
   static void initChat() {
     if (chatMessages.isNotEmpty) return;
@@ -46,7 +46,7 @@ class _AssistantRepository {
     ];
   }
 
-  static void sendMessage(String text) {
+  static Future<void> sendMessage(String text, VoidCallback onUpdate) async {
     initChat();
     chatMessages.add(AssistantMessage(
       id: 'a${chatMessages.length + 1}',
@@ -54,21 +54,18 @@ class _AssistantRepository {
       isUser: true,
       timestamp: DateTime.now(),
     ));
-    final replies = [
-      AppStrings.assistantReply1,
-      AppStrings.assistantReply2,
-      AppStrings.assistantReply3,
-      AppStrings.assistantReply4,
-      AppStrings.assistantReply5,
-    ];
-    Future.delayed(const Duration(milliseconds: 600), () {
-      chatMessages.add(AssistantMessage(
-        id: 'a${chatMessages.length + 1}',
-        text: replies[(chatMessages.length ~/ 2) % replies.length],
-        isUser: false,
-        timestamp: DateTime.now(),
-      ));
-    });
+    onUpdate();
+
+    final reply = await GeminiService.instance
+        .sendMessage(text, systemPrompt: _systemPrompt);
+
+    chatMessages.add(AssistantMessage(
+      id: 'a${chatMessages.length + 1}',
+      text: reply,
+      isUser: false,
+      timestamp: DateTime.now(),
+    ));
+    onUpdate();
   }
 }
 
@@ -92,6 +89,7 @@ class AssistantTab extends StatefulWidget {
 class _AssistantTabState extends State<AssistantTab> {
   final _chatController = TextEditingController();
   final _chatScrollController = ScrollController();
+  bool _isSending = false;
 
   @override
   void initState() {
@@ -106,20 +104,27 @@ class _AssistantTabState extends State<AssistantTab> {
     super.dispose();
   }
 
-  void _sendChat(String text) {
-    if (text.trim().isEmpty) return;
-    _AssistantRepository.sendMessage(text.trim());
+  Future<void> _sendChat(String text) async {
+    if (text.trim().isEmpty || _isSending) return;
+    _isSending = true;
     _chatController.clear();
     setState(() {});
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_chatScrollController.hasClients) {
-        _chatScrollController.animateTo(
-          _chatScrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
+
+    await _AssistantRepository.sendMessage(text.trim(), () {
+      if (mounted) setState(() {});
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_chatScrollController.hasClients) {
+          _chatScrollController.animateTo(
+            _chatScrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
     });
+
+    _isSending = false;
+    if (mounted) setState(() {});
   }
 
   @override
@@ -177,8 +182,9 @@ class _AssistantTabState extends State<AssistantTab> {
                 : ListView.builder(
                     controller: _chatScrollController,
                     padding: const EdgeInsets.symmetric(horizontal: 20),
-                    itemCount: msgs.length,
+                    itemCount: msgs.length + (_isSending ? 1 : 0),
                     itemBuilder: (_, i) {
+                      if (i == msgs.length) return _typingIndicator(context);
                       final m = msgs[i];
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 10),
@@ -225,7 +231,7 @@ class _AssistantTabState extends State<AssistantTab> {
                                 child: Text(
                                   m.text,
                                   style: TextStyle(
-                                    color: m.isUser ? Colors.white : AppPalette.textPrimary(context),
+                                    color: _messageColor(m, context),
                                     fontSize: 13.5,
                                     height: 1.35,
                                   ),
@@ -261,6 +267,7 @@ class _AssistantTabState extends State<AssistantTab> {
                 Expanded(
                   child: TextField(
                     controller: _chatController,
+                    enabled: !_isSending,
                     decoration: InputDecoration(
                       hintText: AppStrings.askTwinnyHint,
                       filled: true,
@@ -286,10 +293,73 @@ class _AssistantTabState extends State<AssistantTab> {
                       ),
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Icon(Icons.send_rounded, color: Colors.white, size: 22),
+                    child: _isSending
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.send_rounded,
+                            color: Colors.white, size: 22),
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _messageColor(AssistantMessage m, BuildContext context) {
+    if (m.isUser) return Colors.white;
+    if (m.text.startsWith('Error:')) return const Color(0xFFDC2626);
+    return AppPalette.textPrimary(context);
+  }
+
+  Widget _typingIndicator(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [AppColors.purple, AppColors.purpleLight],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.smart_toy_rounded,
+              color: Colors.white,
+              size: 16,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppPalette.card(context),
+              borderRadius:
+                  BorderRadius.circular(16).copyWith(bottomLeft: const Radius.circular(4)),
+              border: Border.all(
+                color: AppPalette.border(context).withValues(alpha: 0.5),
+              ),
+            ),
+            child: Text(
+              '...',
+              style: TextStyle(
+                color: AppPalette.textSecondary(context),
+                fontSize: 13.5,
+              ),
             ),
           ),
         ],
