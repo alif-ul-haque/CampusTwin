@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:campus_twin/theme.dart';
 import 'package:campus_twin/app_widget.dart';
 import 'package:campus_twin/l10n.dart';
 import 'package:campus_twin/app_settings.dart';
+import 'package:campus_twin/models/app_models.dart';
+import 'package:campus_twin/repositories/app_repositories.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -17,9 +20,25 @@ class _RegisterPageState extends State<RegisterPage> {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
+  String? _department;
+  int? _semester;
 
   static const double _heroHeight = 372;
   static const double _cardOverlap = 30;
+
+  static const List<String> _departments = [
+    'CSE',
+    'EEE',
+    'ECE',
+    'ME',
+    'CE',
+    'ICT',
+    'AE',
+    'NAE',
+    'BME',
+    'IPE',
+    'MPE',
+  ];
 
   @override
   void dispose() {
@@ -40,6 +59,26 @@ class _RegisterPageState extends State<RegisterPage> {
       );
       return;
     }
+    if (!AppStrings.isValidEmail(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppStrings.authInvalidEmail),
+          backgroundColor: const Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    if (_department == null || _semester == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppStrings.pleaseSelect),
+          backgroundColor: const Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     if (password.length < 6) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppStrings.passwordTooShort)),
@@ -49,14 +88,61 @@ class _RegisterPageState extends State<RegisterPage> {
 
     setState(() => _isLoading = true);
 
-    // TODO: Replace with real registration call.
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      final uid = cred.user!.uid;
 
-    if (!mounted) return;
-    setState(() => _isLoading = false);
+      // Keep the Firebase Auth display name in sync.
+      await cred.user!.updateDisplayName(name);
 
-    if (!mounted) return;
-    Navigator.pop(context);
+      // Create the users/{uid} profile doc (department/semester are
+      // filled in later from Edit Profile). Failure is non-fatal — the
+      // doc is re-created by _ensureUserProfile on the next sign-in.
+      try {
+        await UserRepository().createProfile(AppUser(
+          id: uid,
+          fullName: name,
+          email: email,
+          department: _department!,
+          semester: _semester!,
+        ));
+      } catch (e) {
+        debugPrint('Failed to create user profile: $e');
+      }
+
+      // Send the email verification link (free, built into Firebase Auth).
+      try {
+        await cred.user!.sendEmailVerification();
+      } catch (e) {
+        debugPrint('Failed to send verification email: $e');
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AppStrings.authAccountCreated),
+        behavior: SnackBarBehavior.floating,
+      ));
+      Navigator.pop(context);
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AppStrings.authErrorMessage(e.code)),
+        backgroundColor: const Color(0xFFDC2626),
+        behavior: SnackBarBehavior.floating,
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('${AppStrings.authFailed} (${e.toString()})'),
+        backgroundColor: const Color(0xFFDC2626),
+        behavior: SnackBarBehavior.floating,
+      ));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   void _goToLogin() {
@@ -244,6 +330,34 @@ class _RegisterPageState extends State<RegisterPage> {
             hint: AppStrings.emailHint,
             icon: Icons.mail_outline,
             keyboardType: TextInputType.emailAddress,
+          ),
+          const SizedBox(height: 16),
+          AppFieldLabel(AppStrings.department),
+          const SizedBox(height: 10),
+          AppDropdownField<String>(
+            value: _department,
+            hint: AppStrings.selectDepartment,
+            icon: Icons.school_outlined,
+            items: _departments
+                .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                .toList(),
+            onChanged: (v) => setState(() => _department = v),
+          ),
+          const SizedBox(height: 16),
+          AppFieldLabel(AppStrings.semester),
+          const SizedBox(height: 10),
+          AppDropdownField<int>(
+            value: _semester,
+            hint: AppStrings.selectSemester,
+            icon: Icons.auto_stories_outlined,
+            items: List.generate(
+              8,
+              (i) => DropdownMenuItem(
+                value: i + 1,
+                child: Text('${i + 1}'),
+              ),
+            ),
+            onChanged: (v) => setState(() => _semester = v),
           ),
           const SizedBox(height: 16),
           AppFieldLabel(AppStrings.password),

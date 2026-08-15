@@ -1,10 +1,25 @@
-import 'dart:typed_data';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:campus_twin/models/app_models.dart';
 
 // =============================================================================
-// USER PROFILE  (mutable mock data)
+// USER PROFILE  (DB-backed display data)
 // =============================================================================
+
+String _ordinal(int n) {
+  if (n % 100 >= 11 && n % 100 <= 13) return '${n}th';
+  switch (n % 10) {
+    case 1:
+      return '${n}st';
+    case 2:
+      return '${n}nd';
+    case 3:
+      return '${n}rd';
+    default:
+      return '${n}th';
+  }
+}
 
 class UserProfile {
   final String id;
@@ -15,6 +30,7 @@ class UserProfile {
   final String semester;
   final String session;
   final String phone;
+  final String photoUrl;
   final List<String> enrolledCourses;
 
   const UserProfile({
@@ -25,7 +41,8 @@ class UserProfile {
     required this.department,
     required this.semester,
     this.session = '2022-2026',
-    this.phone = '+880 1XXX-XXXXXX',
+    this.phone = '',
+    this.photoUrl = '',
     this.enrolledCourses = const [],
   });
 
@@ -38,6 +55,7 @@ class UserProfile {
     String? semester,
     String? session,
     String? phone,
+    String? photoUrl,
     List<String>? enrolledCourses,
   }) =>
       UserProfile(
@@ -49,6 +67,7 @@ class UserProfile {
         semester: semester ?? this.semester,
         session: session ?? this.session,
         phone: phone ?? this.phone,
+        photoUrl: photoUrl ?? this.photoUrl,
         enrolledCourses: enrolledCourses ?? this.enrolledCourses,
       );
 
@@ -176,6 +195,34 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Syncs the in-memory profile with the Firestore `users/{uid}` doc.
+  /// Only maps fields that exist in the database — mock-only fields
+  /// (nickname, phone, session, enrolledCourses) keep their values.
+  void applyAppUser(AppUser user) {
+    _profile = _profile.copyWith(
+      id: user.id,
+      name: user.fullName.isEmpty ? _profile.name : user.fullName,
+      email: user.email.isEmpty ? _profile.email : user.email,
+      department: user.department.isEmpty ? _profile.department : user.department,
+      semester: user.semester > 0 ? '${_ordinal(user.semester)} Semester' : _profile.semester,
+      photoUrl: user.profilePhoto ?? '',
+      // Not in the DB schema — always reset so no mock data leaks through.
+      phone: '',
+      nickname: '',
+    );
+    notifyListeners();
+  }
+
+  /// Syncs the in-memory avatar with a downloaded photo URL (e.g. Google
+  /// photo or a Firebase Storage link). Clears any local bytes so the
+  /// network image wins.
+  void setPhotoUrl(String url) {
+    _avatarBytes = null;
+    _avatarPresetIndex = 0;
+    _profile = _profile.copyWith(photoUrl: url);
+    notifyListeners();
+  }
+
   // ── Avatar ─────────────────────────────────────────────────────────────
   Uint8List? _avatarBytes;
   int _avatarPresetIndex = 0;
@@ -254,7 +301,29 @@ class AppAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = AppSettings.instance;
     Widget child;
-    if (s.hasCustomAvatar) {
+    if (s.profile.photoUrl.isNotEmpty) {
+      final Widget photo;
+      if (s.profile.photoUrl.startsWith('data:')) {
+        // Base64 photo stored directly in Firestore.
+        photo = Image.memory(
+          base64Decode(s.profile.photoUrl.split(',').last),
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _buildFallback(s, context),
+        );
+      } else {
+        // Remote URL (e.g. Google profile photo).
+        photo = Image.network(
+          s.profile.photoUrl,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _buildFallback(s, context),
+        );
+      }
+      child = ClipRRect(borderRadius: BorderRadius.circular(borderRadius), child: photo);
+    } else if (s.hasCustomAvatar) {
       child = ClipRRect(
         borderRadius: BorderRadius.circular(borderRadius),
         child: Image.memory(
@@ -297,6 +366,9 @@ class AppAvatar extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildFallback(AppSettings s, BuildContext context) =>
+      _gradientBox(s, context);
 
   Widget _gradientBox(AppSettings s, BuildContext context) {
     final colors = AvatarPresets.gradients[s.avatarPresetIndex %
