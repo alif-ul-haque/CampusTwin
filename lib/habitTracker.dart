@@ -414,10 +414,27 @@ Respond with ONLY the JSON array.
   /// Counts consecutive days going back from today where the user logged
   /// data for [type] (any non-zero value). Resets if a day is missing.
   static int _streakForType(HabitType type, List<HabitLog> sortedDesc) {
+    if (sortedDesc.isEmpty) return 0;
     final todayDate = DateTime.now();
     final today = DateTime(todayDate.year, todayDate.month, todayDate.day);
+    
+    final todayLog = sortedDesc.firstWhere(
+      (l) => _sameDay(l.logDate, today),
+      orElse: () => HabitLog(
+        id: '', userId: '', logDate: DateTime(1970),
+        sleepHours: 0, exerciseMinutes: 0,
+        waterIntakeLiter: 0, screenTimeHours: 0,
+      ),
+    );
+
     int streak = 0;
-    DateTime check = today;
+    DateTime check;
+    if (todayLog.id.isNotEmpty && _hasLoggedData(type, todayLog)) {
+      check = today;
+    } else {
+      check = today.subtract(const Duration(days: 1));
+    }
+
     for (int i = 0; i <= sortedDesc.length; i++) {
       final log = sortedDesc.firstWhere(
         (l) => _sameDay(l.logDate, check),
@@ -432,58 +449,6 @@ Respond with ONLY the JSON array.
       check = check.subtract(const Duration(days: 1));
     }
     return streak;
-  }
-
-  /// Updates today's slot in weekHasData, weekValues, and scoreWeek
-  /// immediately after a save — avoids a full DB round-trip.
-  static void refreshTodayInWeek() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    // weekday: 1=Mon … 7=Sun; our list is 0-indexed Mon=0
-    final todayIndex = today.weekday - 1;
-    if (todayIndex < 0 || todayIndex > 6) return;
-
-    weekHasData[todayIndex] = true;
-
-    // Update each metric's weekValues[today] with its current value
-    metrics = [
-      for (final m in metrics)
-        HabitMetric(
-          type: m.type,
-          title: m.title,
-          icon: m.icon,
-          color: m.color,
-          current: m.current,
-          target: m.target,
-          unit: m.unit,
-          weekValues: [
-            for (int i = 0; i < 7; i++)
-              i == todayIndex ? m.current : m.weekValues[i],
-          ],
-          streak: m.streak,
-          lowerIsBetter: m.lowerIsBetter,
-        ),
-    ];
-
-    // Update today's score slot
-    scoreWeek[todayIndex] = _computeHabitScore().toDouble();
-    habitScore = _computeHabitScore();
-
-    // Update per-habit streaks in memory (today now has data)
-    for (int i = 0; i < metrics.length; i++) {
-      final m = metrics[i];
-      if (m.type == HabitType.score) continue;
-      // If streak was 0 and today now has data, at minimum it becomes 1
-      if (m.streak == 0 && m.current > 0) {
-        metrics[i] = HabitMetric(
-          type: m.type, title: m.title, icon: m.icon, color: m.color,
-          current: m.current, target: m.target, unit: m.unit,
-          weekValues: metrics[i].weekValues,
-          streak: 1,
-          lowerIsBetter: m.lowerIsBetter,
-        );
-      }
-    }
   }
 
   /// Loads last 30 days from Firestore, computes streaks per habit,
@@ -736,6 +701,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                     Navigator.of(sheetContext).pop();
                     setState(() => HabitRepository.updateMetric(metric.type, v));
                     await HabitRepository.persistToday();
+                    await HabitRepository.loadFromDb(); // Reload to update weekly charts & streaks
                     HabitRepository.loadInsights().then((_) {
                       if (mounted) setState(() {});
                     });
