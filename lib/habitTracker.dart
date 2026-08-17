@@ -912,16 +912,6 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
             ],
           ),
         ),
-        Container(
-          width: 46,
-          height: 46,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [AppColors.purple, AppColors.purpleLight], begin: Alignment.topLeft, end: Alignment.bottomRight),
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [BoxShadow(color: AppColors.purple.withValues(alpha: 0.25), blurRadius: 10, offset: const Offset(0, 4))],
-          ),
-          child: const Icon(Icons.notifications_none_rounded, color: Colors.white, size: 22),
-        ),
       ],
     );
   }
@@ -1025,7 +1015,11 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
     return Column(
       children: HabitRepository.metrics.map((m) => Padding(
             padding: const EdgeInsets.only(bottom: 10),
-            child: _HabitCard(metric: m, onEdit: () => _openLogSheet(m)),
+            child: _HabitCard(
+              metric: m,
+              onEdit: () => _openLogSheet(m),
+              showEditButton: m.type != HabitType.screenTime,
+            ),
           )).toList(),
     );
   }
@@ -1409,7 +1403,8 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
 class _HabitCard extends StatelessWidget {
   final HabitMetric metric;
   final VoidCallback onEdit;
-  const _HabitCard({required this.metric, required this.onEdit});
+  final bool showEditButton;
+  const _HabitCard({required this.metric, required this.onEdit, this.showEditButton = true});
 
   @override
   Widget build(BuildContext context) {
@@ -1480,15 +1475,27 @@ class _HabitCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            GestureDetector(
-              onTap: onEdit,
-              child: Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(color: metric.color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-                child: Icon(Icons.add_rounded, color: metric.color, size: 20),
+            if (showEditButton)
+              GestureDetector(
+                onTap: onEdit,
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(color: metric.color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+                  child: Icon(Icons.add_rounded, color: metric.color, size: 20),
+                ),
+              )
+            else
+              // Phone auto-fetch indicator for screen time
+              Tooltip(
+                message: 'Auto-fetched from phone',
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(color: metric.color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10)),
+                  child: Icon(Icons.smartphone_rounded, color: metric.color.withValues(alpha: 0.55), size: 18),
+                ),
               ),
-            ),
           ],
         ),
       ),
