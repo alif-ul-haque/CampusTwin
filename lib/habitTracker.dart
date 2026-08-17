@@ -1,7 +1,4 @@
-// ignore_for_file: unused_element
-
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -52,7 +49,7 @@ class HabitMetric {
     if (target <= 0) return 0;
     if (lowerIsBetter) {
       final ratio = current / target;
-      return (2 - ratio).clamp(0.0, 1.0) / 1.0 > 1 ? 1.0 : (ratio <= 1 ? 1.0 : (2 - ratio).clamp(0.0, 1.0));
+      return ratio <= 1 ? 1.0 : (2 - ratio).clamp(0.0, 1.0);
     }
     return (current / target).clamp(0.0, 1.0);
   }
@@ -143,6 +140,13 @@ class HabitRepository {
   /// true for each Mon–Sun slot that has a real Firestore log
   static List<bool> weekHasData = [false, false, false, false, false, false, false];
 
+  /// Per-metric flags for the weekly chart — a slot counts as "logged" only
+  /// when that specific metric actually has data (e.g. a sleep-only log does
+  /// not mark water/exercise/screen as logged).
+  static final Map<HabitType, List<bool>> weekHasDataByType = {
+    for (final t in HabitType.values) t: List.filled(7, false),
+  };
+
   static int habitScore = 0;
 
   // ── Native channel ───────────────────────────────────────────────────────
@@ -159,31 +163,55 @@ class HabitRepository {
   }
 
   // ── Habit score: Sleep 30% | Water 25% | Exercise 25% | Screen 20% ───────
-  static int _computeHabitScore() {
-    double score = 0;
-    for (final m in metrics) {
-      final weight = switch (m.type) {
+  static double _weightFor(HabitType type) => switch (type) {
         HabitType.sleep => 0.30,
         HabitType.water => 0.25,
         HabitType.exercise => 0.25,
         HabitType.screenTime => 0.20,
         HabitType.score => 0.0,
       };
-      score += m.progress * weight * 100;
+
+  static int _computeHabitScore() {
+    double score = 0;
+    for (final m in metrics) {
+      if (m.type == HabitType.score || m.target <= 0) continue;
+      score += m.progress * _weightFor(m.type) * 100;
     }
-    return score.round().clamp(0, 100);
+    return score.round().clamp(0, 100).toInt();
   }
 
   static List<AIInsight> insights = [];
   static bool insightsLoaded = false;
 
-  static Future<void> loadInsights() async {
+  /// When the newest `stress_predictions` doc was saved (null = none yet).
+  static DateTime? lastPredictionAt;
+
+  /// Restores saved insights, then auto-regenerates fresh ones when the
+  /// last prediction is missing or from a previous calendar day — a new day
+  /// (00:00) means new habit data, so insights refresh once per day on the
+  /// first open (or always with [forceFresh]).
+  static Future<void> loadInsights({bool forceFresh = false}) async {
     insights = _staticInsights();
     insightsLoaded = true;
+    lastPredictionAt = null;
     await _restoreFromDb();
+    final stale = forceFresh ||
+        lastPredictionAt == null ||
+        !_sameDay(lastPredictionAt!, DateTime.now());
+    if (stale) {
+      await generateInsightsFromAi();
+    }
   }
 
-  static Future<void> generateInsightsFromAi() async {
+  /// Guards against overlapping Gemini calls (auto-open + save + manual tap).
+  static bool _generating = false;
+
+  /// Requests fresh insights from Gemini. Returns true when this call
+  /// actually generated (or attempted) new insights, false when it was
+  /// skipped because another generation is already in flight.
+  static Future<bool> generateInsightsFromAi() async {
+    if (_generating) return false;
+    _generating = true;
     final data = metrics
         .map((m) => {
               'title': m.title,
@@ -229,6 +257,8 @@ Respond with ONLY the JSON array.
       insights = _staticInsights();
     }
     insightsLoaded = true;
+    _generating = false;
+    return true;
   }
 
   static List<AIInsight> _staticInsights() => [
@@ -252,15 +282,13 @@ Respond with ONLY the JSON array.
     ),
   ];
 
+  /// Stress is the inverse of today's habit wellness — a fully on-track day
+  /// scores low, missed/exceeded targets score high. Reuses
+  /// `_computeHabitScore` (goal-aware, handles lower-is-better screen time)
+  /// so the value persisted to Firestore can never drift from the app score.
   static int _derivedStressScore() {
     if (metrics.isEmpty) return 50;
-    var total = 0.0;
-    for (final m in metrics) {
-      final ratio = m.target > 0 ? m.current / m.target : 0;
-      total += ratio.clamp(0.0, 2.0);
-    }
-    final avg = total / metrics.length;
-    return ((avg / 2) * 100).round().clamp(0, 100);
+    return (100 - _computeHabitScore()).clamp(0, 100).toInt();
   }
 
   static String _levelFor(int score) {
@@ -295,7 +323,10 @@ Respond with ONLY the JSON array.
           .limit(1)
           .get();
       if (snap.docs.isEmpty) return;
-      final explanation = snap.docs.first.data()['explanation'] as String?;
+      final data = snap.docs.first.data();
+      final predicted = data['predicted_at'] as Timestamp?;
+      if (predicted != null) lastPredictionAt = predicted.toDate();
+      final explanation = data['explanation'] as String?;
       if (explanation == null || explanation.trim().isEmpty) return;
       insights = explanation
           .split(' | ')
@@ -511,8 +542,23 @@ Respond with ONLY the JSON array.
           };
         }
 
-        // Track which week slots have real data
+        // Track which week slots have real data (day-level + per metric)
         weekHasData = weekLogs.map((log) => log != null).toList();
+        for (final t in [
+          HabitType.sleep,
+          HabitType.water,
+          HabitType.exercise,
+          HabitType.screenTime,
+        ]) {
+          weekHasDataByType[t] = [
+            for (final log in weekLogs)
+              log != null &&
+                  (_hasLoggedData(t, log) ||
+                      (t == HabitType.screenTime &&
+                          _sameDay(log.logDate, today) &&
+                          realScreen > 0)),
+          ];
+        }
 
         metrics = [
           for (final m in metrics)
@@ -542,6 +588,7 @@ Respond with ONLY the JSON array.
       } else {
         // No DB data yet (new user) — zero everything, auto-fill screen time only
         weekHasData = List.filled(7, false);
+        weekHasDataByType.updateAll((_, _) => List.filled(7, false));
         scoreWeek = List.filled(7, 0.0);
         if (realScreen > 0) {
           final i = metrics.indexWhere((m) => m.type == HabitType.screenTime);
@@ -566,19 +613,23 @@ Respond with ONLY the JSON array.
   }
 
   /// Computes a 0–100 score for a stored log using the weighted formula.
+  /// Mirrors `_computeHabitScore` exactly — targets and weights come from the
+  /// live `metrics` array so the weekly chart can never drift from today's score.
   static double _logScore(HabitLog log) {
-    final targets = {HabitType.sleep: 8.0, HabitType.water: 3.0, HabitType.exercise: 45.0, HabitType.screenTime: 4.0};
-    final weights = {HabitType.sleep: 0.30, HabitType.water: 0.25, HabitType.exercise: 0.25, HabitType.screenTime: 0.20};
+    final values = {
+      HabitType.sleep: log.sleepHours,
+      HabitType.water: log.waterIntakeLiter,
+      HabitType.exercise: log.exerciseMinutes.toDouble(),
+      HabitType.screenTime: log.screenTimeHours,
+    };
     double score = 0;
-    final values = {HabitType.sleep: log.sleepHours, HabitType.water: log.waterIntakeLiter, HabitType.exercise: log.exerciseMinutes.toDouble(), HabitType.screenTime: log.screenTimeHours};
-    for (final t in targets.keys) {
-      final v = values[t]!;
-      final tgt = targets[t]!;
-      final w = weights[t]!;
-      final progress = t == HabitType.screenTime
-          ? (v <= tgt ? 1.0 : (2 - v / tgt).clamp(0.0, 1.0))
-          : (v / tgt).clamp(0.0, 1.0);
-      score += progress * w * 100;
+    for (final m in metrics) {
+      final v = values[m.type];
+      if (v == null || m.type == HabitType.score || m.target <= 0) continue;
+      final progress = m.lowerIsBetter
+          ? (v <= m.target ? 1.0 : (2 - v / m.target).clamp(0.0, 1.0))
+          : (v / m.target).clamp(0.0, 1.0);
+      score += progress * _weightFor(m.type) * 100;
     }
     return score;
   }
@@ -604,6 +655,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
   
   HabitType _selectedChart = HabitType.sleep;
   final int _navIndex = 2; // Habits tab selected
+  bool _refreshingInsights = false;
 
   static const _weekdayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
@@ -612,7 +664,10 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
     super.initState();
     
     HabitRepository.loadFromDb().then((_) {
-      HabitRepository.loadInsights();
+      // Stale (or missing) saved predictions auto-regenerate here
+      HabitRepository.loadInsights().then((_) {
+        if (mounted) setState(() {});
+      });
       if (mounted) {
         setState(() {});
         if (!HabitRepository.checkedInToday) {
@@ -703,9 +758,11 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                     setState(() => HabitRepository.updateMetric(metric.type, v));
                     await HabitRepository.persistToday();
                     await HabitRepository.loadFromDb(); // Reload to update weekly charts & streaks
-                    HabitRepository.loadInsights().then((_) {
-                      if (mounted) setState(() {});
-                    });
+                    if (mounted) setState(() {});
+                    // Restore saved insights, then always regenerate fresh
+                    // ones based on the new data
+                    await HabitRepository.loadInsights(forceFresh: true);
+                    if (mounted) setState(() {});
                   },
                 ),
               ],
@@ -722,35 +779,27 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
     switch (type) {
       case HabitType.sleep:
         if (value > 15) {
-          return 'Sleep duration of ${value.toStringAsFixed(1)} hrs is too high.\n\n'
-              'Sleeping more than 15 hours a day may indicate hypersomnia or an '
-              'underlying health condition. Please enter a realistic value (max 15 hrs).';
+          return AppStrings.thresholdSleepHigh(value);
         }
-        if (value < 0) return 'Sleep hours cannot be negative.';
+        if (value < 0) return AppStrings.thresholdSleepNegative;
         return null;
       case HabitType.water:
         if (value > 7) {
-          return 'Water intake of ${value.toStringAsFixed(1)} L is dangerously high.\n\n'
-              'Drinking more than 7 litres per day can cause hyponatraemia (water '
-              'intoxication), which is a serious medical risk. Please enter a realistic '
-              'value (max 7 L).';
+          return AppStrings.thresholdWaterHigh(value);
         }
-        if (value < 0) return 'Water intake cannot be negative.';
+        if (value < 0) return AppStrings.thresholdWaterNegative;
         return null;
       case HabitType.exercise:
         if (value > 180) {
-          return 'Exercise of ${value.toInt()} minutes is above the safe limit.\n\n'
-              'More than 180 minutes (3 hours) of continuous exercise per day '
-              'increases injury risk and can lead to overtraining syndrome. '
-              'Please enter a realistic value (max 180 min).';
+          return AppStrings.thresholdExerciseHigh(value.toInt());
         }
-        if (value < 0) return 'Exercise minutes cannot be negative.';
+        if (value < 0) return AppStrings.thresholdExerciseNegative;
         return null;
       case HabitType.screenTime:
         if (value > 24) {
-          return 'Screen time cannot exceed 24 hours in a single day.';
+          return AppStrings.thresholdScreenHigh;
         }
-        if (value < 0) return 'Screen time cannot be negative.';
+        if (value < 0) return AppStrings.thresholdScreenNegative;
         return null;
       case HabitType.score:
         return null;
@@ -780,6 +829,42 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
         ),
       );
     }
+  }
+
+  /// Requests a fresh set of AI insights (background Gemini call).
+  Future<void> _refreshInsights() async {
+    if (_refreshingInsights) return;
+    setState(() => _refreshingInsights = true);
+    final generated = await HabitRepository.generateInsightsFromAi();
+    if (!mounted) return;
+    setState(() => _refreshingInsights = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(milliseconds: 1800),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        content: Row(
+          children: [
+            Icon(
+              generated
+                  ? Icons.check_circle_rounded
+                  : Icons.sync_rounded,
+              color: generated
+                  ? const Color(0xFF10B981)
+                  : AppColors.purple,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              generated
+                  ? AppStrings.insightsUpdated
+                  : AppStrings.insightsAlreadyRefreshing,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // ── Shared visual helpers (mirrors app-wide section style) ──────────────
@@ -884,7 +969,35 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
               const SizedBox(height: 12),
               _buildAnalyticsCard(),
               const SizedBox(height: 24),
-              _sectionTitle(AppStrings.aiInsights, leadingIcon: Icons.auto_awesome_rounded),
+              Row(
+                children: [
+                  Expanded(
+                    child: _sectionTitle(
+                      AppStrings.aiInsights,
+                      leadingIcon: Icons.auto_awesome_rounded,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed:
+                        HabitRepository.insightsLoaded && !_refreshingInsights
+                            ? _refreshInsights
+                            : null,
+                    tooltip: AppStrings.refreshInsights,
+                    padding: EdgeInsets.zero,
+                    constraints:
+                        const BoxConstraints(minWidth: 34, minHeight: 34),
+                    icon: _refreshingInsights
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: AppColors.purple),
+                          )
+                        : const Icon(Icons.refresh_rounded,
+                            size: 20, color: AppColors.purple),
+                  ),
+                ],
+              ),
               const SizedBox(height: 12),
               _buildInsightsSection(),
             ],
@@ -1070,8 +1183,12 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
       standard = m.target;
     }
 
-    // Only consider days that actually have a log
-    final hasData = HabitRepository.weekHasData;
+    // Only consider days that actually have data for the selected metric
+    // (score uses day-level flags; each habit uses its per-metric flags)
+    final hasData = _selectedChart == HabitType.score
+        ? HabitRepository.weekHasData
+        : HabitRepository.weekHasDataByType[_selectedChart] ??
+            HabitRepository.weekHasData;
     final daysWithData = hasData.where((b) => b).length;
 
     // Max over days-with-data only (avoid dividing by empty)
@@ -1627,7 +1744,7 @@ class _ThresholdWarningDialog extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Value Out of Range',
+                      Text(AppStrings.thresholdDialogTitle,
                           style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w800,
@@ -1679,7 +1796,7 @@ class _ThresholdWarningDialog extends StatelessWidget {
                       borderRadius: BorderRadius.circular(14)),
                   elevation: 0,
                 ),
-                child: const Text('OK, fix it',
+                child: Text(AppStrings.thresholdDialogOk,
                     style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
               ),
             ),
