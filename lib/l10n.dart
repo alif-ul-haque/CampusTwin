@@ -311,6 +311,57 @@ class AppStrings {
   static String get habitStreaks => _t('Habit Streaks', 'অভ্যাস স্ট্রিক');
   static String get weeklyAnalytics => _t('Weekly Analytics', 'সাপ্তাহিক বিশ্লেষণ');
   static String get aiInsights => _t('AI Insights', 'এআই অন্তর্দৃষ্টি');
+  static String get refreshInsights =>
+      _t('Refresh insights', 'ইনসাইট রিফ্রেশ করুন');
+  static String get insightsUpdated =>
+      _t('Insights updated', 'ইনসাইট আপডেট হয়েছে');
+  static String get insightsAlreadyRefreshing =>
+      _t('Insights are already refreshing…', 'ইনসাইট আগেই রিফ্রেশ হচ্ছে…');
+
+  // ── Threshold validation ────────────────────────────────────────────────
+  static String thresholdSleepHigh(double v) => _t(
+        'Sleep duration of ${v.toStringAsFixed(1)} hrs is too high.\n\n'
+        'Sleeping more than 15 hours a day may indicate hypersomnia or an '
+        'underlying health condition. Please enter a realistic value (max 15 hrs).',
+        'ঘুমের সময় ${v.toStringAsFixed(1)} ঘণ্টা অনেক বেশি।\n\n'
+        'দিনে ১৫ ঘণ্টার বেশি ঘুম হাইপারসোমনিয়া বা অন্য স্বাস্থ্যগত সমস্যার '
+        'ইঙ্গিত দিতে পারে। অনুগ্রহ করে একটি বাস্তবসম্মত মান দিন (সর্বোচ্চ ১৫ ঘণ্টা)।',
+      );
+  static String thresholdWaterHigh(double v) => _t(
+        'Water intake of ${v.toStringAsFixed(1)} L is dangerously high.\n\n'
+        'Drinking more than 7 litres per day can cause hyponatraemia (water '
+        'intoxication), which is a serious medical risk. Please enter a realistic '
+        'value (max 7 L).',
+        '${v.toStringAsFixed(1)} লিটার পানি গ্রহণ বিপজ্জনকভাবে বেশি।\n\n'
+        'দিনে ৭ লিটারের বেশি পানি পান করলে হাইপোন্যাট্রেমিয়া (পানি নেশা) হতে '
+        'পারে, যা গুরুতর ঝুঁকিপূর্ণ। অনুগ্রহ করে বাস্তবসম্মত মান দিন (সর্বোচ্চ ৭ লি)।',
+      );
+  static String thresholdExerciseHigh(int v) => _t(
+        'Exercise of $v minutes is above the safe limit.\n\n'
+        'More than 180 minutes (3 hours) of continuous exercise per day '
+        'increases injury risk and can lead to overtraining syndrome. '
+        'Please enter a realistic value (max 180 min).',
+        '$v মিনিটের ব্যায়াম নিরাপদ মাত্রার চেয়ে বেশি।\n\n'
+        'দিনে ১৮০ মিনিটের (৩ ঘণ্টা) বেশি একটানা ব্যায়াম আঘাতের ঝুঁকি বাড়ায় '
+        'এবং ওভারট্রেনিং সিন্ড্রোমের কারণ হতে পারে। অনুগ্রহ করে বাস্তবসম্মত মান দিন '
+        '(সর্বোচ্চ ১৮০ মিনিট)।',
+      );
+  static String get thresholdScreenHigh =>
+      _t('Screen time cannot exceed 24 hours in a single day.',
+          'একদিনে স্ক্রিন সময় ২৪ ঘণ্টার বেশি হতে পারে না।');
+  static String get thresholdSleepNegative =>
+      _t('Sleep hours cannot be negative.', 'ঘুমের ঘণ্টা ঋণাত্মক হতে পারে না।');
+  static String get thresholdWaterNegative =>
+      _t('Water intake cannot be negative.', 'পানি গ্রহণ ঋণাত্মক হতে পারে না।');
+  static String get thresholdExerciseNegative =>
+      _t('Exercise minutes cannot be negative.',
+          'ব্যায়ামের মিনিট ঋণাত্মক হতে পারে না।');
+  static String get thresholdScreenNegative =>
+      _t('Screen time cannot be negative.', 'স্ক্রিন সময় ঋণাত্মক হতে পারে না।');
+  static String get thresholdDialogTitle =>
+      _t('Value Out of Range', 'মান সীমার বাইরে');
+  static String get thresholdDialogOk =>
+      _t('OK, fix it', 'ঠিক আছে, ঠিক করবো');
   static String get score => _t('Score', 'স্কোর');
   static String get todaysHabitSummary =>
       _t('Today\'s Habit Summary', 'আজকের অভ্যাস সারাংশ');
