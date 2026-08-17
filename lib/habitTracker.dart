@@ -3,6 +3,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:campus_twin/models/app_models.dart';
@@ -82,21 +83,12 @@ class AIInsight {
 }
 
 // =============================================================================
-// MOCK DATA REPOSITORY
-//
-// TODO: Replace with real endpoints, e.g.
-//   GET  /habits/{userId}/today        -> today's HabitLog snapshot
-//   GET  /habits/{userId}/week         -> last 7 HabitLog rows for charts
-//   POST /habits/{userId}/log          -> body: { sleepHours, exerciseMinutes,
-//                                                  waterIntakeLiter, screenTimeHours }
-//   GET  /stress-prediction/{userId}/latest -> drives the AI Insights copy
-//   POST /daily-checkin/{userId}       -> creates a DailyCheckIn row + streak
+// DATA REPOSITORY (Firestore-backed)
 // =============================================================================
 
-class _HabitRepository {
-  static int habitScore = 78;
+class HabitRepository {
   static bool checkedInToday = false;
-  static int checkInStreak = 5;
+  static int checkInStreak = 0;
 
   static List<HabitMetric> metrics = [
     HabitMetric(
@@ -104,61 +96,93 @@ class _HabitRepository {
       title: AppStrings.habitSleep,
       icon: Icons.bedtime_rounded,
       color: Color(0xFF6366F1),
-      current: 6.5,
+      current: 0,
       target: 8,
       unit: 'hrs',
-      weekValues: [7.2, 6.8, 5.5, 6.0, 7.5, 8.1, 6.5],
-      streak: 4,
+      weekValues: [0, 0, 0, 0, 0, 0, 0],
+      streak: 0,
     ),
     HabitMetric(
       type: HabitType.water,
       title: AppStrings.habitWaterIntake,
       icon: Icons.water_drop_rounded,
       color: Color(0xFF06B6D4),
-      current: 1.8,
+      current: 0,
       target: 3,
       unit: 'L',
-      weekValues: [2.5, 2.8, 1.9, 2.2, 3.0, 2.6, 1.8],
-      streak: 7,
+      weekValues: [0, 0, 0, 0, 0, 0, 0],
+      streak: 0,
     ),
     HabitMetric(
       type: HabitType.exercise,
       title: AppStrings.habitExercise,
       icon: Icons.fitness_center_rounded,
       color: Color(0xFF10B981),
-      current: 25,
+      current: 0,
       target: 45,
       unit: 'min',
-      weekValues: [30, 45, 0, 20, 40, 50, 25],
-      streak: 2,
+      weekValues: [0, 0, 0, 0, 0, 0, 0],
+      streak: 0,
     ),
     HabitMetric(
       type: HabitType.screenTime,
       title: AppStrings.habitScreenTime,
       icon: Icons.smartphone_rounded,
       color: Color(0xFFF59E0B),
-      current: 5.4,
+      current: 0,
       target: 4,
       unit: 'hrs',
-      weekValues: [4.5, 5.0, 6.2, 5.8, 4.9, 4.2, 5.4],
+      weekValues: [0, 0, 0, 0, 0, 0, 0],
       streak: 0,
       lowerIsBetter: true,
     ),
   ];
 
-  static List<double> scoreWeek = [66, 71, 58, 69, 74, 82, 78];
+  static List<double> scoreWeek = [0, 0, 0, 0, 0, 0, 0];
+
+  /// true for each Mon–Sun slot that has a real Firestore log
+  static List<bool> weekHasData = [false, false, false, false, false, false, false];
+
+  static int habitScore = 0;
+
+  // ── Native channel ───────────────────────────────────────────────────────
+  static const _usageChannel = MethodChannel('campus_twin/usage_access');
+
+  static Future<double> fetchRealScreenTime() async {
+    try {
+      final raw = await _usageChannel.invokeMethod<double>('getScreenTimeHours');
+      return raw ?? 0.0;
+    } catch (_) {
+      return 0.0;
+    }
+  }
+
+  // ── Habit score: Sleep 30% | Water 25% | Exercise 25% | Screen 20% ───────
+  static int _computeHabitScore() {
+    double score = 0;
+    for (final m in metrics) {
+      final weight = switch (m.type) {
+        HabitType.sleep => 0.30,
+        HabitType.water => 0.25,
+        HabitType.exercise => 0.25,
+        HabitType.screenTime => 0.20,
+        HabitType.score => 0.0,
+      };
+      score += m.progress * weight * 100;
+    }
+    return score.round().clamp(0, 100);
+  }
 
   static List<AIInsight> insights = [];
   static bool insightsLoaded = false;
 
   static Future<void> loadInsights() async {
-    // Static insights for now — the AI pipeline (_generateInsightsFromAi)
-    // is kept wired up but only starts fetching once real data exists.
     insights = _staticInsights();
     insightsLoaded = true;
+    await _restoreFromDb();
   }
 
-  static Future<void> _generateInsightsFromAi() async {
+  static Future<void> generateInsightsFromAi() async {
     final data = metrics
         .map((m) => {
               'title': m.title,
@@ -197,12 +221,10 @@ Respond with ONLY the JSON array.
             text: map['text'] as String? ?? '',
           );
         }).toList();
-      } catch (_) {
-        // Keep insights empty on parse failure — fall back below.
-      }
+        await _savePrediction(insights);
+      } catch (_) {}
     }
     if (insights.isEmpty) {
-      // Gemini unavailable or returned unusable data — show the static set.
       insights = _staticInsights();
     }
     insightsLoaded = true;
@@ -229,8 +251,6 @@ Respond with ONLY the JSON array.
     ),
   ];
 
-  /// Derives a 0..100 stress score from the current habit values.
-  /// Lower habit fulfillment (or higher screen time) pushes the score up.
   static int _derivedStressScore() {
     if (metrics.isEmpty) return 50;
     var total = 0.0;
@@ -260,9 +280,7 @@ Respond with ONLY the JSON array.
         'explanation': result.map((i) => '${i.tag}: ${i.text}').join(' | '),
         'predicted_at': Timestamp.now(),
       });
-    } catch (_) {
-      // Offline or permission issue — the in-memory copy still works.
-    }
+    } catch (_) {}
   }
 
   static Future<void> _restoreFromDb() async {
@@ -298,9 +316,7 @@ Respond with ONLY the JSON array.
             );
           })
           .toList();
-    } catch (_) {
-      // No saved prediction yet — leave insights empty.
-    }
+    } catch (_) {}
   }
 
   static IconData _iconFor(String key) => switch (key) {
@@ -324,18 +340,16 @@ Respond with ONLY the JSON array.
   static double _valueOf(HabitType type) {
     final i = metrics.indexWhere((m) => m.type == type);
     if (i == -1) return 0;
-    final m = metrics[i];
-    return m.lowerIsBetter ? m.current / m.target : m.current;
+    return metrics[i].current; // always return raw value, not ratio
   }
 
   static void updateMetric(HabitType type, double value) {
     final i = metrics.indexWhere((m) => m.type == type);
     if (i == -1) return;
     metrics[i] = metrics[i].copyWith(current: value);
-    habitScore = (_averageProgress() * 100).round();
+    habitScore = _computeHabitScore();
   }
 
-  /// Upserts today's `habit_logs` row from the current metric values.
   static Future<void> persistToday() async {
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -343,13 +357,20 @@ Respond with ONLY the JSON array.
       final now = DateTime.now();
       final logDate = DateTime(now.year, now.month, now.day);
       final logs = FirebaseFirestore.instance.collection('habit_logs');
+      // Merge manual screen time with real phone data
+      final realScreen = await fetchRealScreenTime();
+      final manualScreen = _valueOf(HabitType.screenTime);
+      final screenToSave = manualScreen > 0 ? manualScreen : realScreen;
+      final score = _computeHabitScore();
       final data = {
         'user_id': uid,
         'log_date': Timestamp.fromDate(logDate),
         'sleep_hours': _valueOf(HabitType.sleep),
         'exercise_minutes': _valueOf(HabitType.exercise).round(),
         'water_intake_liter': _valueOf(HabitType.water),
-        'screen_time_hours': _valueOf(HabitType.screenTime),
+        'screen_time_hours': double.parse(screenToSave.toStringAsFixed(2)),
+        'habit_score': score,
+        'updated_at': Timestamp.now(),
       };
       final existing = await logs
           .where('user_id', isEqualTo: uid)
@@ -361,29 +382,112 @@ Respond with ONLY the JSON array.
       } else {
         await logs.add(data);
       }
-    } catch (_) {
-      // Offline — the in-memory copy still drives the UI.
-    }
+    } catch (_) {}
   }
 
-  static double _averageProgress() {
-    if (metrics.isEmpty) return 0;
-    var sum = 0.0;
-    for (final m in metrics) {
-      sum += m.progress;
-    }
-    return sum / metrics.length;
-  }
 
   static void checkIn() {
     checkedInToday = true;
     checkInStreak += 1;
   }
 
-  /// Replaces the mock snapshots with the user's real last 7 days of
-  /// `habit_logs`, today's check-in state, and their latest `daily_checkins`
-  /// streak. Falls back silently to the in-memory seed when the user has no
-  /// data yet or the request fails.
+  static bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  /// Returns true when the user actually logged data for [type] that day
+  /// (any non-zero entry counts — streak is about LOGGING, not goal-meeting).
+  static bool _hasLoggedData(HabitType type, HabitLog log) {
+    switch (type) {
+      case HabitType.sleep:
+        return log.sleepHours > 0;
+      case HabitType.water:
+        return log.waterIntakeLiter > 0;
+      case HabitType.exercise:
+        return log.exerciseMinutes > 0;
+      case HabitType.screenTime:
+        return log.screenTimeHours > 0;
+      case HabitType.score:
+        return true;
+    }
+  }
+
+  /// Counts consecutive days going back from today where the user logged
+  /// data for [type] (any non-zero value). Resets if a day is missing.
+  static int _streakForType(HabitType type, List<HabitLog> sortedDesc) {
+    final todayDate = DateTime.now();
+    final today = DateTime(todayDate.year, todayDate.month, todayDate.day);
+    int streak = 0;
+    DateTime check = today;
+    for (int i = 0; i <= sortedDesc.length; i++) {
+      final log = sortedDesc.firstWhere(
+        (l) => _sameDay(l.logDate, check),
+        orElse: () => HabitLog(
+          id: '', userId: '', logDate: DateTime(1970),
+          sleepHours: 0, exerciseMinutes: 0,
+          waterIntakeLiter: 0, screenTimeHours: 0,
+        ),
+      );
+      if (log.id.isEmpty || !_hasLoggedData(type, log)) break;
+      streak++;
+      check = check.subtract(const Duration(days: 1));
+    }
+    return streak;
+  }
+
+  /// Updates today's slot in weekHasData, weekValues, and scoreWeek
+  /// immediately after a save — avoids a full DB round-trip.
+  static void refreshTodayInWeek() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    // weekday: 1=Mon … 7=Sun; our list is 0-indexed Mon=0
+    final todayIndex = today.weekday - 1;
+    if (todayIndex < 0 || todayIndex > 6) return;
+
+    weekHasData[todayIndex] = true;
+
+    // Update each metric's weekValues[today] with its current value
+    metrics = [
+      for (final m in metrics)
+        HabitMetric(
+          type: m.type,
+          title: m.title,
+          icon: m.icon,
+          color: m.color,
+          current: m.current,
+          target: m.target,
+          unit: m.unit,
+          weekValues: [
+            for (int i = 0; i < 7; i++)
+              i == todayIndex ? m.current : m.weekValues[i],
+          ],
+          streak: m.streak,
+          lowerIsBetter: m.lowerIsBetter,
+        ),
+    ];
+
+    // Update today's score slot
+    scoreWeek[todayIndex] = _computeHabitScore().toDouble();
+    habitScore = _computeHabitScore();
+
+    // Update per-habit streaks in memory (today now has data)
+    for (int i = 0; i < metrics.length; i++) {
+      final m = metrics[i];
+      if (m.type == HabitType.score) continue;
+      // If streak was 0 and today now has data, at minimum it becomes 1
+      if (m.streak == 0 && m.current > 0) {
+        metrics[i] = HabitMetric(
+          type: m.type, title: m.title, icon: m.icon, color: m.color,
+          current: m.current, target: m.target, unit: m.unit,
+          weekValues: metrics[i].weekValues,
+          streak: 1,
+          lowerIsBetter: m.lowerIsBetter,
+        );
+      }
+    }
+  }
+
+  /// Loads last 30 days from Firestore, computes streaks per habit,
+  /// week values for current Mon–Sun, habit score, and real screen time.
   static Future<void> loadFromDb() async {
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -391,97 +495,127 @@ Respond with ONLY the JSON array.
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
 
-      final logs = await FirebaseFirestore.instance
+      // Fetch screen time and logs in parallel
+      final screenFuture = fetchRealScreenTime();
+      final snap = await FirebaseFirestore.instance
           .collection('habit_logs')
           .where('user_id', isEqualTo: uid)
           .orderBy('log_date', descending: true)
-          .limit(7)
+          .limit(30)
           .get();
-      if (logs.docs.isNotEmpty) {
-        final byWeekday = <int, HabitLog>{};
-        for (final doc in logs.docs) {
-          final log = HabitLog.fromMap(doc.id, doc.data());
-          byWeekday.putIfAbsent(log.logDate.weekday, () => log);
+      final realScreen = await screenFuture;
+
+      if (snap.docs.isNotEmpty) {
+        final allLogs = snap.docs.map((d) => HabitLog.fromMap(d.id, d.data())).toList();
+        final byDate = <String, HabitLog>{};
+        for (final log in allLogs) {
+          final k = '${log.logDate.year}-${log.logDate.month}-${log.logDate.day}';
+          byDate.putIfAbsent(k, () => log);
         }
-        HabitLog? latest;
-        HabitLog? todayLog;
-        for (final doc in logs.docs) {
-          final log = HabitLog.fromMap(doc.id, doc.data());
-          if (todayLog == null && !log.logDate.isBefore(today)) todayLog = log;
-          if (latest == null || log.logDate.isAfter(latest.logDate)) {
-            latest = log;
+
+        // Current week Mon–Sun
+        final monday = today.subtract(Duration(days: today.weekday - 1));
+        final weekLogs = List.generate(7, (i) {
+          final d = monday.add(Duration(days: i));
+          return byDate['${d.year}-${d.month}-${d.day}'];
+        });
+
+        final todayKey = '${today.year}-${today.month}-${today.day}';
+        final todayLog = byDate[todayKey] ?? allLogs.first;
+
+        final streaks = <HabitType, int>{};
+        for (final t in [HabitType.sleep, HabitType.water, HabitType.exercise, HabitType.screenTime]) {
+          streaks[t] = _streakForType(t, allLogs);
+        }
+
+        double valueFor(HabitType type, HabitLog log) {
+          if (type == HabitType.screenTime && _sameDay(log.logDate, today) && realScreen > 0) {
+            return realScreen;
           }
+          return switch (type) {
+            HabitType.sleep => log.sleepHours,
+            HabitType.water => log.waterIntakeLiter,
+            HabitType.exercise => log.exerciseMinutes.toDouble(),
+            HabitType.screenTime => log.screenTimeHours,
+            HabitType.score => 1.0,
+          };
         }
-        double valueFor(HabitType type, HabitLog log) => switch (type) {
-              HabitType.sleep => log.sleepHours,
-              HabitType.water => log.waterIntakeLiter,
-              HabitType.exercise => log.exerciseMinutes.toDouble(),
-              HabitType.screenTime => log.screenTimeHours,
-              HabitType.score => 1.0,
-            };
-        final applied = todayLog ?? latest;
-        if (applied != null) {
-          metrics = [
-            for (final m in metrics)
-              HabitMetric(
-                type: m.type,
-                title: m.title,
-                icon: m.icon,
-                color: m.color,
-                current: valueFor(m.type, applied),
-                target: m.target,
-                unit: m.unit,
-                weekValues: [
-                  for (var wd = DateTime.monday; wd <= DateTime.sunday; wd++)
-                    byWeekday[wd] != null
-                        ? valueFor(m.type, byWeekday[wd]!)
-                        : m.weekValues[wd - 1],
-                ],
-                streak: m.streak,
-                lowerIsBetter: m.lowerIsBetter,
-              ),
-          ];
-          scoreWeek = [
-            for (var wd = DateTime.monday; wd <= DateTime.sunday; wd++)
-              _dayProgress(wd, byWeekday[wd]),
-          ];
-          habitScore = (_averageProgress() * 100).round();
+
+        // Track which week slots have real data
+        weekHasData = weekLogs.map((log) => log != null).toList();
+
+        metrics = [
+          for (final m in metrics)
+            HabitMetric(
+              type: m.type,
+              title: m.title,
+              icon: m.icon,
+              color: m.color,
+              current: valueFor(m.type, todayLog),
+              target: m.target,
+              unit: m.unit,
+              weekValues: [
+                for (final log in weekLogs)
+                  log != null ? valueFor(m.type, log) : 0.0,
+              ],
+              streak: streaks[m.type] ?? 0,
+              lowerIsBetter: m.lowerIsBetter,
+            ),
+        ];
+
+        scoreWeek = weekLogs.map((log) {
+          if (log == null) return 0.0;
+          return _logScore(log);
+        }).toList();
+
+        habitScore = _computeHabitScore();
+      } else {
+        // No DB data yet (new user) — zero everything, auto-fill screen time only
+        weekHasData = List.filled(7, false);
+        scoreWeek = List.filled(7, 0.0);
+        if (realScreen > 0) {
+          final i = metrics.indexWhere((m) => m.type == HabitType.screenTime);
+          if (i != -1) metrics[i] = metrics[i].copyWith(current: realScreen);
         }
+        habitScore = 0;
       }
 
-      final checkins = await FirebaseFirestore.instance
+      // Check-in state
+      final ciSnap = await FirebaseFirestore.instance
           .collection('daily_checkins')
           .where('user_id', isEqualTo: uid)
           .orderBy('checkin_date', descending: true)
           .limit(1)
           .get();
-      if (checkins.docs.isNotEmpty) {
-        final checkin = DailyCheckIn.fromMap(checkins.docs.first.id, checkins.docs.first.data());
-        checkedInToday = !checkin.checkinDate.isBefore(today);
-        checkInStreak = checkin.dayNumber;
+      if (ciSnap.docs.isNotEmpty) {
+        final ci = DailyCheckIn.fromMap(ciSnap.docs.first.id, ciSnap.docs.first.data());
+        checkedInToday = !ci.checkinDate.isBefore(today);
+        checkInStreak = ci.dayNumber;
       }
-    } catch (_) {
-      // Seed data stays active when offline or if the user has no rows yet.
-    }
+    } catch (_) {}
   }
 
-  /// Progress (0..1) toward the daily goal for a given weekday, or the
-  /// in-memory value when that day has no log.
-  static double _dayProgress(int weekday, HabitLog? log) {
-    if (log == null) return scoreWeek[weekday - 1] / 100;
-    var sum = 0.0;
-    for (final m in metrics) {
-      final value = switch (m.type) {
-        HabitType.sleep => log.sleepHours,
-        HabitType.water => log.waterIntakeLiter,
-        HabitType.exercise => log.exerciseMinutes.toDouble(),
-        HabitType.screenTime => log.screenTimeHours,
-        HabitType.score => 1.0,
-      };
-      if (m.target <= 0) continue;
-      sum += (value / m.target).clamp(0.0, 1.0);
+  /// Computes a 0–100 score for a stored log using the weighted formula.
+  static double _logScore(HabitLog log) {
+    final targets = {HabitType.sleep: 8.0, HabitType.water: 3.0, HabitType.exercise: 45.0, HabitType.screenTime: 4.0};
+    final weights = {HabitType.sleep: 0.30, HabitType.water: 0.25, HabitType.exercise: 0.25, HabitType.screenTime: 0.20};
+    double score = 0;
+    final values = {HabitType.sleep: log.sleepHours, HabitType.water: log.waterIntakeLiter, HabitType.exercise: log.exerciseMinutes.toDouble(), HabitType.screenTime: log.screenTimeHours};
+    for (final t in targets.keys) {
+      final v = values[t]!;
+      final tgt = targets[t]!;
+      final w = weights[t]!;
+      final progress = t == HabitType.screenTime
+          ? (v <= tgt ? 1.0 : (2 - v / tgt).clamp(0.0, 1.0))
+          : (v / tgt).clamp(0.0, 1.0);
+      score += progress * w * 100;
     }
-    return metrics.isEmpty ? 0 : sum / metrics.length;
+    return score;
+  }
+
+  static double _averageProgress() {
+    if (metrics.isEmpty) return 0;
+    return metrics.map((m) => m.progress).reduce((a, b) => a + b) / metrics.length;
   }
 }
 
@@ -509,7 +643,8 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
     super.initState();
     
     _checkInPulseController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: true);
-    _HabitRepository.loadInsights().then((_) {
+    HabitRepository.loadFromDb().then((_) {
+      HabitRepository.loadInsights();
       if (mounted) setState(() {});
     });
   }
@@ -521,7 +656,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
     super.dispose();
   }
 
-  HabitMetric _metric(HabitType t) => _HabitRepository.metrics.firstWhere((m) => m.type == t);
+  HabitMetric _metric(HabitType t) => HabitRepository.metrics.firstWhere((m) => m.type == t);
 
   // ── Log / edit bottom sheet ──────────────────────────────────────────────
   void _openLogSheet(HabitMetric metric) {
@@ -579,15 +714,31 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                 const SizedBox(height: 20),
                 AppPrimaryButton(
                   label: AppStrings.saveEntry,
-                  onPressed: () {
+                  onPressed: () async {
                     final v = double.tryParse(controller.text.trim());
-                    if (v != null) {
-                      setState(() => _HabitRepository.updateMetric(metric.type, v));
-                      _HabitRepository.loadInsights().then((_) {
-                        if (mounted) setState(() {});
-                      });
+                    if (v == null) return;
+
+                    // ── Threshold validation ──────────────────────────
+                    final error = _validateThreshold(metric.type, v);
+                    if (error != null) {
+                      await showDialog<void>(
+                        context: sheetContext,
+                        builder: (ctx) => _ThresholdWarningDialog(
+                          metricTitle: metric.title,
+                          metricIcon: metric.icon,
+                          metricColor: metric.color,
+                          message: error,
+                        ),
+                      );
+                      return; // do not save; keep sheet open for correction
                     }
+
                     Navigator.of(sheetContext).pop();
+                    setState(() => HabitRepository.updateMetric(metric.type, v));
+                    await HabitRepository.persistToday();
+                    HabitRepository.loadInsights().then((_) {
+                      if (mounted) setState(() {});
+                    });
                   },
                 ),
               ],
@@ -598,9 +749,49 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
     );
   }
 
+  /// Returns a human-readable error string if [value] exceeds the safe
+  /// threshold for [type], or null if the value is acceptable.
+  String? _validateThreshold(HabitType type, double value) {
+    switch (type) {
+      case HabitType.sleep:
+        if (value > 15) {
+          return 'Sleep duration of ${value.toStringAsFixed(1)} hrs is too high.\n\n'
+              'Sleeping more than 15 hours a day may indicate hypersomnia or an '
+              'underlying health condition. Please enter a realistic value (max 15 hrs).';
+        }
+        if (value < 0) return 'Sleep hours cannot be negative.';
+        return null;
+      case HabitType.water:
+        if (value > 7) {
+          return 'Water intake of ${value.toStringAsFixed(1)} L is dangerously high.\n\n'
+              'Drinking more than 7 litres per day can cause hyponatraemia (water '
+              'intoxication), which is a serious medical risk. Please enter a realistic '
+              'value (max 7 L).';
+        }
+        if (value < 0) return 'Water intake cannot be negative.';
+        return null;
+      case HabitType.exercise:
+        if (value > 180) {
+          return 'Exercise of ${value.toInt()} minutes is above the safe limit.\n\n'
+              'More than 180 minutes (3 hours) of continuous exercise per day '
+              'increases injury risk and can lead to overtraining syndrome. '
+              'Please enter a realistic value (max 180 min).';
+        }
+        if (value < 0) return 'Exercise minutes cannot be negative.';
+        return null;
+      case HabitType.screenTime:
+        if (value < 0) return 'Screen time cannot be negative.';
+        return null; // Screen time has no hard upper cap in the app
+      case HabitType.score:
+        return null;
+    }
+  }
+
   void _handleCheckIn() {
-    if (_HabitRepository.checkedInToday) return;
-    setState(() => _HabitRepository.checkIn());
+    if (HabitRepository.checkedInToday) return;
+    setState(() => HabitRepository.checkIn());
+    // Persist check-in to Firestore
+    _persistCheckIn();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
@@ -610,7 +801,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
           children: [
             const Icon(Icons.local_fire_department_rounded, color: Color(0xFFF59E0B), size: 18),
             const SizedBox(width: 8),
-            Text(AppStrings.checkedInStreak(_HabitRepository.checkInStreak),
+            Text(AppStrings.checkedInStreak(HabitRepository.checkInStreak),
                 style: const TextStyle(fontWeight: FontWeight.w700)),
           ],
         ),
@@ -619,6 +810,49 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
   }
 
   // ── Shared visual helpers (mirrors app-wide section style) ──────────────
+
+  Future<void> _persistCheckIn() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+
+      // Find the previous check-in to calculate streak
+      final prev = await FirebaseFirestore.instance
+          .collection('daily_checkins')
+          .where('user_id', isEqualTo: uid)
+          .orderBy('checkin_date', descending: true)
+          .limit(1)
+          .get();
+
+      int dayNumber = 1;
+      if (prev.docs.isNotEmpty) {
+        final lastDate = (prev.docs.first.data()['checkin_date'] as Timestamp).toDate();
+        final lastDay = DateTime(lastDate.year, lastDate.month, lastDate.day);
+        final yesterday = today.subtract(const Duration(days: 1));
+        final prevStreak = prev.docs.first.data()['day_number'] as int? ?? 1;
+        // Extend streak only if last check-in was yesterday
+        if (lastDay == yesterday) {
+          dayNumber = prevStreak + 1;
+        } else if (lastDay == today) {
+          return; // Already checked in today
+        }
+        // else streak resets to 1
+      }
+
+      await FirebaseFirestore.instance.collection('daily_checkins').add({
+        'user_id': uid,
+        'checkin_date': Timestamp.fromDate(today),
+        'day_number': dayNumber,
+        'reward_points': dayNumber * 10,
+        'completed': true,
+      });
+
+      if (mounted) setState(() => HabitRepository.checkInStreak = dayNumber);
+    } catch (_) {}
+  }
+
   Widget _sectionTitle(String title, {String? trailing, IconData? leadingIcon}) {
     return Row(
       children: [
@@ -643,7 +877,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
     return Scaffold(
       extendBody: false,
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: _HabitRepository.checkedInToday ? null : _buildCheckInButton(),
+      floatingActionButton: HabitRepository.checkedInToday ? null : _buildCheckInButton(),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -749,12 +983,12 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                 width: 84,
                 height: 84,
                 child: CustomPaint(
-                  painter: _RingProgressPainter(progress: _HabitRepository.habitScore / 100, trackColor: Colors.white.withValues(alpha: 0.22), progressColor: Colors.white),
+                  painter: _RingProgressPainter(progress: HabitRepository.habitScore / 100, trackColor: Colors.white.withValues(alpha: 0.22), progressColor: Colors.white),
                   child: Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text('${_HabitRepository.habitScore}%', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+                        Text('${HabitRepository.habitScore}%', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
                         Text(AppStrings.score, style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600)),
                       ],
                     ),
@@ -770,7 +1004,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                         style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -0.2)),
                     const SizedBox(height: 6),
                     Text(
-                      _HabitRepository.habitScore >= 75 ? AppStrings.onTrackToday : AppStrings.keepStreakAlive,
+                      HabitRepository.habitScore >= 75 ? AppStrings.onTrackToday : AppStrings.keepStreakAlive,
                       style: const TextStyle(color: Colors.white70, fontSize: 12.5, height: 1.35),
                     ),
                   ],
@@ -818,7 +1052,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
   // ── 3. Individual habit cards ─────────────────────────────────────────
   Widget _buildHabitCardsGrid() {
     return Column(
-      children: _HabitRepository.metrics.map((m) => Padding(
+      children: HabitRepository.metrics.map((m) => Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: _HabitCard(metric: m, onEdit: () => _openLogSheet(m)),
           )).toList(),
@@ -857,7 +1091,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
     double standard;
 
     if (_selectedChart == HabitType.score) {
-      values = _HabitRepository.scoreWeek;
+      values = HabitRepository.scoreWeek;
       color = AppColors.purple;
       unit = '%';
       lowerIsBetter = false;
@@ -871,11 +1105,19 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
       standard = m.target;
     }
 
-    // Whether a given day's value meets the standard.
+    // Only consider days that actually have a log
+    final hasData = HabitRepository.weekHasData;
+    final daysWithData = hasData.where((b) => b).length;
+
+    // Max over days-with-data only (avoid dividing by empty)
+    final dataValues = [for (int i = 0; i < values.length; i++) if (hasData[i]) values[i]];
+    final maxVal = dataValues.isEmpty ? 1.0 : dataValues.reduce((a, b) => a > b ? a : b).clamp(0.001, double.infinity);
+
+    // Average only over days with real data
+    final avg = daysWithData == 0 ? 0.0 : dataValues.reduce((a, b) => a + b) / daysWithData;
+
     bool meetsStandard(double v) =>
         lowerIsBetter ? v <= standard : v >= standard * 0.8;
-
-    final maxVal = values.reduce((a, b) => a > b ? a : b);
 
     return _GlowCard(
       radius: 22,
@@ -884,6 +1126,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Chip selector ───────────────────────────────────────
             SizedBox(
               height: 34,
               child: ListView.separated(
@@ -904,67 +1147,121 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                         border: Border.all(color: selected ? AppColors.purple : AppPalette.border(context)),
                       ),
                       child: Text(chips[i].$2,
-                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? Colors.white : AppPalette.textSecondary(context))),
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700,
+                              color: selected ? Colors.white : AppPalette.textSecondary(context))),
                     ),
                   );
                 },
               ),
             ),
-            const SizedBox(height: 20),
+            // ── Days logged subtitle ────────────────────────────────
+            if (daysWithData < 7) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.info_outline_rounded, size: 13, color: AppPalette.textSecondary(context).withValues(alpha: 0.6)),
+                  const SizedBox(width: 4),
+                  Text(
+                    daysWithData == 0
+                        ? 'No entries yet — start logging to see your chart'
+                        : '$daysWithData of 7 days logged this week',
+                    style: TextStyle(fontSize: 11, color: AppPalette.textSecondary(context).withValues(alpha: 0.7)),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 16),
+            // ── Bar chart ───────────────────────────────────────────
             SizedBox(
               height: 160,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: List.generate(values.length, (i) {
-                  final ratio = maxVal == 0 ? 0.0 : values[i] / maxVal;
-                  final isLast = i == values.length - 1;
-                  final met = meetsStandard(values[i]);
+                  final logged = hasData[i];
+                  final ratio = logged ? (values[i] / maxVal).clamp(0.0, 1.0) : 0.0;
+                  final today = DateTime.now();
+                  final monday = today.subtract(Duration(days: today.weekday - 1));
+                  final isToday = DateTime(monday.add(Duration(days: i)).year,
+                          monday.add(Duration(days: i)).month,
+                          monday.add(Duration(days: i)).day) ==
+                      DateTime(today.year, today.month, today.day);
+                  final met = logged && meetsStandard(values[i]);
+
                   return Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          // ── Emoji indicator ──────────────────────────
-                          Text(
-                            met ? '😊' : '😞',
-                            style: const TextStyle(fontSize: 15),
-                          ),
-                          const SizedBox(height: 4),
+                          // ── Indicator ────────────────────────────────
+                          if (logged)
+                            Text(met ? '😊' : '😞', style: const TextStyle(fontSize: 14))
+                          else
+                            Text('—',
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    color: AppPalette.textSecondary(context).withValues(alpha: 0.35),
+                                    fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 3),
                           // ── Value label ──────────────────────────────
                           Text(
-                            values[i] % 1 == 0
-                                ? values[i].toInt().toString()
-                                : values[i].toStringAsFixed(1),
+                            logged
+                                ? (values[i] % 1 == 0
+                                    ? values[i].toInt().toString()
+                                    : values[i].toStringAsFixed(1))
+                                : '',
                             style: TextStyle(
                               fontSize: 9.5,
-                              color: AppPalette.textSecondary(context).withValues(alpha: 0.7),
+                              color: AppPalette.textSecondary(context).withValues(alpha: 0.65),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                           const SizedBox(height: 4),
-                          // ── Animated bar ──────────────────────────────
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 500),
-                            curve: Curves.easeOutCubic,
-                            height: 88 * ratio.clamp(0.04, 1.0),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  isLast ? color : color.withValues(alpha: 0.55),
-                                  isLast ? color.withValues(alpha: 0.7) : color.withValues(alpha: 0.25),
-                                ],
-                              ),
-                            ),
-                          ),
+                          // ── Bar ──────────────────────────────────────
+                          logged
+                              ? AnimatedContainer(
+                                  duration: const Duration(milliseconds: 500),
+                                  curve: Curves.easeOutCubic,
+                                  height: (88 * ratio).clamp(4.0, 88.0),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(8),
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [
+                                        isToday ? color : color.withValues(alpha: 0.55),
+                                        isToday
+                                            ? color.withValues(alpha: 0.75)
+                                            : color.withValues(alpha: 0.25),
+                                      ],
+                                    ),
+                                    boxShadow: isToday
+                                        ? [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 3))]
+                                        : null,
+                                  ),
+                                )
+                              // No-data placeholder bar
+                              : Container(
+                                  height: 20,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: AppPalette.border(context).withValues(alpha: 0.5),
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                ),
                           const SizedBox(height: 6),
                           // ── Day label ────────────────────────────────
                           Text(
                             _weekdayLabels[i],
-                            style: TextStyle(fontSize: 11, color: AppPalette.textSecondary(context), fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isToday
+                                  ? color
+                                  : AppPalette.textSecondary(context),
+                              fontWeight: isToday ? FontWeight.w800 : FontWeight.w600,
+                            ),
                           ),
                         ],
                       ),
@@ -974,22 +1271,28 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
               ),
             ),
             const SizedBox(height: 10),
-            // ── Legend row ─────────────────────────────────────────
+            // ── Legend / average row ────────────────────────────────
             Row(
               children: [
                 Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
                 const SizedBox(width: 6),
                 Text(
-                  AppStrings.thisWeekAvg((values.reduce((a, b) => a + b) / values.length).toStringAsFixed(1), unit),
+                  daysWithData == 0
+                      ? 'No data yet'
+                      : AppStrings.thisWeekAvg(avg.toStringAsFixed(1), unit),
                   style: TextStyle(fontSize: 11.5, color: AppPalette.textSecondary(context)),
                 ),
                 const Spacer(),
-                const Text('😊', style: TextStyle(fontSize: 12)),
-                const SizedBox(width: 3),
-                Text(AppStrings.metLabel, style: TextStyle(fontSize: 11, color: AppPalette.textSecondary(context))),
-                const Text('😞', style: TextStyle(fontSize: 12)),
-                const SizedBox(width: 3),
-                Text(AppStrings.belowLabel, style: TextStyle(fontSize: 11, color: AppPalette.textSecondary(context))),
+                if (daysWithData > 0) ...[
+                  const Text('😊', style: TextStyle(fontSize: 12)),
+                  const SizedBox(width: 3),
+                  Text(AppStrings.metLabel,
+                      style: TextStyle(fontSize: 11, color: AppPalette.textSecondary(context))),
+                  const Text('😞', style: TextStyle(fontSize: 12)),
+                  const SizedBox(width: 3),
+                  Text(AppStrings.belowLabel,
+                      style: TextStyle(fontSize: 11, color: AppPalette.textSecondary(context))),
+                ],
               ],
             ),
           ],
@@ -1000,13 +1303,13 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
 
   // ── 6. AI insights ────────────────────────────────────────────────────
   Widget _buildInsightsSection() {
-    if (!_HabitRepository.insightsLoaded) {
+    if (!HabitRepository.insightsLoaded) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 20),
         child: Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
       );
     }
-    if (_HabitRepository.insights.isEmpty) {
+    if (HabitRepository.insights.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(
@@ -1021,7 +1324,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
       );
     }
     return Column(
-      children: _HabitRepository.insights.map((insight) => Padding(
+      children: HabitRepository.insights.map((insight) => Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: Container(
               padding: const EdgeInsets.all(16),
@@ -1070,7 +1373,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
 
   // ── Daily check-in button ─────────────────────────────────────────────
   Widget _buildCheckInButton() {
-    final done = _HabitRepository.checkedInToday;
+    final done = HabitRepository.checkedInToday;
     return AnimatedBuilder(
       animation: _checkInPulseController,
       builder: (context, child) {
@@ -1110,7 +1413,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
               Icon(done ? Icons.check_circle_rounded : Icons.local_fire_department_rounded, color: Colors.white, size: 20),
               const SizedBox(width: 8),
               Text(
-                done ? AppStrings.checkedInDay(_HabitRepository.checkInStreak) : AppStrings.dailyCheckIn,
+                done ? AppStrings.checkedInDay(HabitRepository.checkInStreak) : AppStrings.dailyCheckIn,
                 style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800),
               ),
             ],
@@ -1343,6 +1646,122 @@ class _RingProgressPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _RingProgressPainter old) => old.progress != progress || old.progressColor != progressColor;
+}
+
+/// Styled alert shown when a logged value exceeds a safety threshold.
+class _ThresholdWarningDialog extends StatelessWidget {
+  final String metricTitle;
+  final IconData metricIcon;
+  final Color metricColor;
+  final String message;
+
+  const _ThresholdWarningDialog({
+    required this.metricTitle,
+    required this.metricIcon,
+    required this.metricColor,
+    required this.message,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      elevation: 0,
+      backgroundColor: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: AppPalette.card(context),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: const Color(0xFFDC2626).withValues(alpha: 0.3)),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFDC2626).withValues(alpha: 0.12),
+              blurRadius: 24, offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ── Icon row ─────────────────────────────────────────────
+            Row(
+              children: [
+                Container(
+                  width: 46, height: 46,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDC2626).withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(Icons.warning_amber_rounded,
+                      color: Color(0xFFDC2626), size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Value Out of Range',
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFFDC2626))),
+                      Row(
+                        children: [
+                          Icon(metricIcon, size: 13, color: metricColor),
+                          const SizedBox(width: 4),
+                          Text(metricTitle,
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: metricColor)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFDC2626).withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFDC2626).withValues(alpha: 0.15)),
+              ),
+              child: Text(
+                message,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  color: AppPalette.textPrimary(context),
+                  height: 1.5,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFDC2626),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                  elevation: 0,
+                ),
+                child: const Text('OK, fix it',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// Soft-shadow card wrapper — visual match with the rest of CampusTwin.
