@@ -597,7 +597,6 @@ class HabitTrackerPage extends StatefulWidget {
 
 class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProviderStateMixin {
   
-  late final AnimationController _checkInPulseController;
   HabitType _selectedChart = HabitType.sleep;
   final int _navIndex = 2; // Habits tab selected
 
@@ -607,18 +606,15 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
   void initState() {
     super.initState();
     
-    _checkInPulseController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: true);
     HabitRepository.loadFromDb().then((_) {
       HabitRepository.loadInsights();
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {});
+        if (!HabitRepository.checkedInToday) {
+          _handleCheckIn();
+        }
+      }
     });
-  }
-
-  @override
-  void dispose() {
-    
-    _checkInPulseController.dispose();
-    super.dispose();
   }
 
   HabitMetric _metric(HabitType t) => HabitRepository.metrics.firstWhere((m) => m.type == t);
@@ -753,26 +749,29 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
     }
   }
 
-  void _handleCheckIn() {
+  Future<void> _handleCheckIn() async {
     if (HabitRepository.checkedInToday) return;
     setState(() => HabitRepository.checkIn());
     // Persist check-in to Firestore
-    _persistCheckIn();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(milliseconds: 1600),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        content: Row(
-          children: [
-            const Icon(Icons.local_fire_department_rounded, color: Color(0xFFF59E0B), size: 18),
-            const SizedBox(width: 8),
-            Text(AppStrings.checkedInStreak(HabitRepository.checkInStreak),
-                style: const TextStyle(fontWeight: FontWeight.w700)),
-          ],
+    await _persistCheckIn();
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(milliseconds: 2000),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 18),
+              const SizedBox(width: 8),
+              const Text("Today's checkin done",
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
 
   // ── Shared visual helpers (mirrors app-wide section style) ──────────────
@@ -842,8 +841,6 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: false,
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: HabitRepository.checkedInToday ? null : _buildCheckInButton(),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -1334,58 +1331,6 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
               ),
             ),
           )).toList(),
-    );
-  }
-
-  // ── Daily check-in button ─────────────────────────────────────────────
-  Widget _buildCheckInButton() {
-    final done = HabitRepository.checkedInToday;
-    return AnimatedBuilder(
-      animation: _checkInPulseController,
-      builder: (context, child) {
-        final glow = done ? 0.0 : (0.15 + 0.15 * _checkInPulseController.value);
-        return Container(
-          margin: const EdgeInsets.only(bottom: 4),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            boxShadow: [
-              BoxShadow(
-                color: (done ? const Color(0xFF10B981) : AppColors.purple).withValues(alpha: 0.35 + glow),
-                blurRadius: 22,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: child,
-        );
-      },
-      child: GestureDetector(
-        onTap: _handleCheckIn,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 15),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            gradient: LinearGradient(
-              colors: done
-                  ? [const Color(0xFF10B981), const Color(0xFF06B6D4)]
-                  : [AppColors.purple, const Color(0xFF7C3AED)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(done ? Icons.check_circle_rounded : Icons.local_fire_department_rounded, color: Colors.white, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                done ? AppStrings.checkedInDay(HabitRepository.checkInStreak) : AppStrings.dailyCheckIn,
-                style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
