@@ -65,11 +65,10 @@ class MainActivity : FlutterActivity() {
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
-    /** Returns today's total foreground screen time in fractional hours. */
+    /** Returns today's true interactive screen time in fractional hours. */
     private fun getTodayScreenTimeHours(): Double {
         val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val cal = Calendar.getInstance()
-        // Start of today (midnight)
         cal.set(Calendar.HOUR_OF_DAY, 0)
         cal.set(Calendar.MINUTE, 0)
         cal.set(Calendar.SECOND, 0)
@@ -77,11 +76,40 @@ class MainActivity : FlutterActivity() {
         val startMs = cal.timeInMillis
         val endMs   = System.currentTimeMillis()
 
-        val stats = usm.queryUsageStats(
-            UsageStatsManager.INTERVAL_DAILY, startMs, endMs
-        ) ?: return 0.0
+        val events = usm.queryEvents(startMs, endMs)
+        var totalMs = 0L
+        var lastInteractiveTime = 0L
 
-        val totalMs = stats.sumOf { it.totalTimeInForeground }
-        return totalMs / 3_600_000.0   // ms → hours
+        while (events.hasNextEvent()) {
+            val event = android.app.usage.UsageEvents.Event()
+            events.getNextEvent(event)
+            
+            // 15 = SCREEN_INTERACTIVE, 16 = SCREEN_NON_INTERACTIVE
+            if (event.eventType == 15) {
+                lastInteractiveTime = event.timeStamp
+            } else if (event.eventType == 16) {
+                // If we get a turn-off event before a turn-on, it means it was on since midnight
+                if (lastInteractiveTime == 0L) {
+                    lastInteractiveTime = startMs
+                }
+                val diff = event.timeStamp - lastInteractiveTime
+                if (diff > 0) {
+                    totalMs += diff
+                }
+                lastInteractiveTime = 0L
+            }
+        }
+        
+        // If the screen is still on right now
+        if (lastInteractiveTime > 0) {
+            val diff = endMs - lastInteractiveTime
+            if (diff > 0) {
+                totalMs += diff
+            }
+        }
+
+        var hours = totalMs / 3_600_000.0
+        if (hours > 24.0) hours = 24.0
+        return hours
     }
 }

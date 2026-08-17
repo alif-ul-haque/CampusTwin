@@ -487,7 +487,11 @@ Respond with ONLY the JSON array.
         });
 
         final todayKey = '${today.year}-${today.month}-${today.day}';
-        final todayLog = byDate[todayKey] ?? allLogs.first;
+        final todayLog = byDate[todayKey] ?? HabitLog(
+          id: '', userId: uid, logDate: today,
+          sleepHours: 0, exerciseMinutes: 0,
+          waterIntakeLiter: 0, screenTimeHours: 0,
+        );
 
         final streaks = <HabitType, int>{};
         for (final t in [HabitType.sleep, HabitType.water, HabitType.exercise, HabitType.screenTime]) {
@@ -743,8 +747,11 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
         if (value < 0) return 'Exercise minutes cannot be negative.';
         return null;
       case HabitType.screenTime:
+        if (value > 24) {
+          return 'Screen time cannot exceed 24 hours in a single day.';
+        }
         if (value < 0) return 'Screen time cannot be negative.';
-        return null; // Screen time has no hard upper cap in the app
+        return null;
       case HabitType.score:
         return null;
     }
