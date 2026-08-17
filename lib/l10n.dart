@@ -494,6 +494,11 @@ class AppStrings {
   static String get calendar => _t('Calendar', 'ক্যালেন্ডার');
   static String balanceCaption(String month, String year) =>
       _t('$month $year · balance', '$month $year · ব্যালেন্স');
+  static String overspentCaption(String month, String year) =>
+      _t('$month $year · overspent by', '$month $year · অতিরিক্ত ব্যয়');
+  static String get overBudgetMessage =>
+      _t('You\'ve spent more than your budget this month.',
+          'এই মাসে বাজেটের বেশি খরচ হয়েছে।');
   static String thisWeekCaption(String label) =>
       _t('This week · $label', 'এই সপ্তাহ · $label');
   static String yearCaption(String year) =>

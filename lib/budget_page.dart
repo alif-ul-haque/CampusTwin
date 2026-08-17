@@ -406,15 +406,46 @@ class _BudgetPageState extends State<BudgetPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(AppStrings.balanceCaption(
-                          _months[_visibleMonth.month - 1], '${_visibleMonth.year}'),
+                      Text(
+                        balance < 0
+                            ? AppStrings.overspentCaption(
+                                _months[_visibleMonth.month - 1], '${_visibleMonth.year}')
+                            : AppStrings.balanceCaption(
+                                _months[_visibleMonth.month - 1], '${_visibleMonth.year}'),
                         style: TextStyle(color: AppPalette.textSecondary(context), fontSize: 11.5)),
                       const SizedBox(height: 1),
-                      Text(_money(balance),
+                      Text(_money(balance), // _money() already does .abs() — no minus sign shown
                         style: TextStyle(
                           fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.6,
-                          color: balance < 0 ? const Color(0xFFDC2626) : AppPalette.textPrimary(context),
+                          color: balance < 0 ? const Color(0xFFF59E0B) : AppPalette.textPrimary(context),
                         )),
+                      if (balance < 0) ...[
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.info_outline_rounded, size: 14, color: Color(0xFFF59E0B)),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  AppStrings.overBudgetMessage,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFFF59E0B),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -1057,6 +1088,7 @@ class _TxnTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cat = BudgetRepository.category(txn.categoryId);
     final isExpense = txn.type == TxnType.expense;
+    final accent = isExpense ? const Color(0xFFEF4444) : const Color(0xFF10B981);
 
     return _GlowCard(
       radius: 14,
@@ -1090,11 +1122,19 @@ class _TxnTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Text(
-              '${isExpense ? '−' : '+'} ${_money(txn.amount)}',
-              style: TextStyle(
-                fontSize: 14, fontWeight: FontWeight.w800,
-                color: isExpense ? const Color(0xFFEF4444) : const Color(0xFF10B981)),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isExpense ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+                  size: 12, color: accent,
+                ),
+                const SizedBox(width: 3),
+                Text(
+                  _money(txn.amount),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: accent),
+                ),
+              ],
             ),
           ],
         ),
