@@ -151,7 +151,8 @@ class HabitRepository {
   static Future<double> fetchRealScreenTime() async {
     try {
       final raw = await _usageChannel.invokeMethod<double>('getScreenTimeHours');
-      return raw ?? 0.0;
+      if (raw == null) return 0.0;
+      return double.parse(raw.toStringAsFixed(2));
     } catch (_) {
       return 0.0;
     }
