@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:campus_twin/theme.dart';
@@ -54,12 +56,14 @@ class DeadlineItem {
   final String course;
   final DateTime dueDate;
   final String? courseCode;
+  final String? description;
   const DeadlineItem({
     required this.id,
     required this.title,
     required this.course,
     required this.dueDate,
     this.courseCode,
+    this.description,
   });
   int get daysLeft => dueDate.difference(DateTime.now()).inDays;
   bool get isUrgent => daysLeft <= 2;
@@ -161,6 +165,10 @@ class _DashboardRepository {
           course: 'Machine Learning',
           dueDate: now.add(const Duration(days: 1)),
           courseCode: 'CSE501',
+          description:
+              'Implement a decision tree classifier from scratch and evaluate '
+              'it on the provided dataset. Submit code + a 2-page report '
+              'covering accuracy, precision, and recall.',
         ),
         DeadlineItem(
           id: 'd2',
@@ -168,6 +176,9 @@ class _DashboardRepository {
           course: 'Software Engineering',
           dueDate: now.add(const Duration(days: 3)),
           courseCode: 'CSE303',
+          description:
+              'Document sprint progress: completed user stories, blockers, '
+              'and updated Gantt chart. Include screenshots of the current build.',
         ),
         DeadlineItem(
           id: 'd3',
@@ -175,6 +186,9 @@ class _DashboardRepository {
           course: 'Internship',
           dueDate: now.add(const Duration(days: 6)),
           courseCode: 'INT401',
+          description:
+              'Draft the internal audit checklist for the ISMS scope review. '
+              'Cross-check against last quarter\'s findings before submitting.',
         ),
         DeadlineItem(
           id: 'd4',
@@ -182,6 +196,9 @@ class _DashboardRepository {
           course: 'Data Mining',
           dueDate: now.add(const Duration(days: 4)),
           courseCode: 'CSE402',
+          description:
+              'Covers clustering (k-means, DBSCAN) and association rule mining. '
+              'Review lecture slides 8–11.',
         ),
       ]..sort((a, b) => a.daysLeft.compareTo(b.daysLeft));
     }
@@ -1116,10 +1133,7 @@ class _DashboardPageState extends State<DashboardPage>
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: GestureDetector(
-            onTap: () {
-              _DashboardRepository.toggleScheduleComplete(item.id);
-              setState(() {});
-            },
+            onTap: () => _handleToggleSchedule(item),
             child: _GlowCard(
               radius: 14,
               child: AnimatedContainer(
@@ -1183,65 +1197,67 @@ class _DashboardPageState extends State<DashboardPage>
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item.title,
-                            style: TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w700,
-                              color: item.isCompleted
-                                  ? AppPalette.textSecondary(context).withValues(
-                                      alpha: 0.6,
-                                    )
-                                  : AppPalette.textPrimary(context),
-                              decoration: item.isCompleted
-                                  ? TextDecoration.lineThrough
-                                  : null,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Row(
+                      child: ImageFiltered(
+                        imageFilter: ImageFilter.blur(
+                          sigmaX: item.isCompleted ? 1.4 : 0,
+                          sigmaY: item.isCompleted ? 1.4 : 0,
+                        ),
+                        child: Opacity(
+                          opacity: item.isCompleted ? 0.55 : 1.0,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                item.type,
+                                item.title,
                                 style: TextStyle(
-                                  fontSize: 11.5,
-                                  color: accent.withValues(alpha: 0.8),
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppPalette.textPrimary(context),
                                 ),
                               ),
-                              if (item.location != null) ...[
-                                Text(
-                                  ' · ',
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    color: AppPalette.textSecondary(context).withValues(
-                                      alpha: 0.5,
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Text(
+                                    item.type,
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      color: accent.withValues(alpha: 0.8),
                                     ),
                                   ),
-                                ),
-                                Icon(
-                                  Icons.location_on_outlined,
-                                  size: 11,
-                                  color: AppPalette.textSecondary(context).withValues(
-                                    alpha: 0.5,
-                                  ),
-                                ),
-                                const SizedBox(width: 2),
-                                Text(
-                                  item.location!,
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    color: AppPalette.textSecondary(context).withValues(
-                                      alpha: 0.7,
+                                  if (item.location != null) ...[
+                                    Text(
+                                      ' · ',
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        color: AppPalette.textSecondary(context).withValues(
+                                          alpha: 0.5,
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                ),
-                              ],
+                                    Icon(
+                                      Icons.location_on_outlined,
+                                      size: 11,
+                                      color: AppPalette.textSecondary(context).withValues(
+                                        alpha: 0.5,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      item.location!,
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        color: AppPalette.textSecondary(context).withValues(
+                                          alpha: 0.7,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
                     AnimatedContainer(
@@ -1278,6 +1294,68 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
+  bool get _isBn => AppSettings.instance.locale.languageCode == 'bn';
+
+  Future<void> _handleToggleSchedule(ScheduleItem item) async {
+    if (!item.isCompleted) {
+      // ── Marking done — simple yes/no confirm (prevents accidental taps) ──
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(_isBn ? 'কাজটি সম্পন্ন করবেন?' : 'Mark as done?'),
+          content: Text(
+            _isBn
+                ? '"${item.title}" সম্পন্ন হিসেবে চিহ্নিত হবে।'
+                : 'This will mark "${item.title}" as completed.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(_isBn ? 'বাতিল' : 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+              child: Text(_isBn ? 'সম্পন্ন করুন' : 'Mark Done'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+      if (!mounted) return; // guarded async gap — dialog may have disposed us
+      _DashboardRepository.toggleScheduleComplete(item.id);
+      setState(() {});
+      return;
+    }
+
+    // ── Undoing — ask why, so accidental undo is caught ────────────────
+    final reason = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _UndoReasonSheet(itemTitle: item.title),
+    );
+    if (reason == null) return; // cancelled
+    if (!mounted) return; // guarded async gap — sheet may have disposed us
+    _DashboardRepository.toggleScheduleComplete(item.id);
+    setState(() {});
+  }
+
+  void _showDeadlineDetail(DeadlineItem d) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _DeadlineDetailSheet(
+        deadline: d,
+        onOpenPlanner: () {
+          Navigator.of(context).pop();
+          setState(() => _selectedTabIndex = 1);
+        },
+      ),
+    );
+  }
+
   Widget _buildDeadlineList() {
     final items = _DashboardRepository.deadlines;
     if (items.isEmpty) {
@@ -1292,7 +1370,9 @@ class _DashboardPageState extends State<DashboardPage>
             : const Color(0xFFF59E0B);
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
-          child: _GlowCard(
+          child: GestureDetector(
+            onTap: () => _showDeadlineDetail(d),
+            child: _GlowCard(
             radius: 14,
             child: Container(
               padding: const EdgeInsets.all(14),
@@ -1387,6 +1467,7 @@ class _DashboardPageState extends State<DashboardPage>
                   ),
                 ],
               ),
+            ),
             ),
           ),
         );
@@ -2378,6 +2459,347 @@ class _StatTile extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shows full context for a deadline — what it's about, how urgent it is,
+/// and a shortcut to the planner to schedule study time for it.
+class _DeadlineDetailSheet extends StatelessWidget {
+  final DeadlineItem deadline;
+  final VoidCallback onOpenPlanner;
+  const _DeadlineDetailSheet({required this.deadline, required this.onOpenPlanner});
+
+  static const _wdShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  static const _mnShort = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final isBn = AppSettings.instance.locale.languageCode == 'bn';
+    final overdue = deadline.isOverdue;
+    final urgent = deadline.isUrgent;
+    final urgColor = overdue ? const Color(0xFFDC2626) : const Color(0xFFF59E0B);
+    final statusColor = overdue
+        ? const Color(0xFFDC2626)
+        : urgent
+            ? const Color(0xFFF59E0B)
+            : const Color(0xFF10B981);
+
+    final due = deadline.dueDate;
+    final dateLabel =
+        '${_wdShort[due.weekday - 1]}, ${_mnShort[due.month - 1]} ${due.day}';
+
+    final statusLabel = overdue
+        ? (isBn ? 'মেয়াদ শেষ' : 'Overdue')
+        : deadline.daysLeft == 0
+            ? (isBn ? 'আজই শেষ দিন' : 'Due today')
+            : (isBn ? '${deadline.daysLeft} দিন বাকি' : '${deadline.daysLeft} days left');
+
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.only(top: 20),
+        decoration: BoxDecoration(
+          color: AppPalette.background(context),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(22, 14, 22, 28),
+          shrinkWrap: true,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: AppPalette.border(context),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            // ── Status pill ──────────────────────────────────────────
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        overdue
+                            ? Icons.error_outline_rounded
+                            : urgent
+                                ? Icons.warning_amber_rounded
+                                : Icons.event_available_rounded,
+                        size: 13,
+                        color: statusColor,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        statusLabel,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: statusColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            // ── Title ────────────────────────────────────────────────
+            Text(
+              deadline.title,
+              style: TextStyle(
+                fontSize: 21,
+                fontWeight: FontWeight.w800,
+                color: AppPalette.textPrimary(context),
+                letterSpacing: -0.3,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(Icons.menu_book_rounded, size: 14, color: AppPalette.textSecondary(context)),
+                const SizedBox(width: 5),
+                Text(
+                  deadline.courseCode != null
+                      ? '${deadline.course} · ${deadline.courseCode}'
+                      : deadline.course,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppPalette.textSecondary(context),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(Icons.calendar_today_rounded, size: 13, color: AppPalette.textSecondary(context)),
+                const SizedBox(width: 5),
+                Text(
+                  isBn ? 'জমা দেওয়ার তারিখ: $dateLabel' : 'Due $dateLabel',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: AppPalette.textSecondary(context),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            // ── Description / what to do ────────────────────────────
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppPalette.card(context),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppPalette.border(context)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.description_outlined, size: 16, color: AppColors.purple),
+                      const SizedBox(width: 6),
+                      Text(
+                        isBn ? 'কী করতে হবে' : 'What to do',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppPalette.textPrimary(context),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    (deadline.description?.trim().isNotEmpty ?? false)
+                        ? deadline.description!
+                        : (isBn
+                            ? 'এই কাজের জন্য কোনো বিস্তারিত নোট যোগ করা হয়নি।'
+                            : 'No additional notes have been added for this yet.'),
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      height: 1.5,
+                      color: AppPalette.textSecondary(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (urgent && !overdue) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: urgColor.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: urgColor.withValues(alpha: 0.2)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.bolt_rounded, size: 16, color: urgColor),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        isBn
+                            ? 'সময় খুবই কম — আজই সময় বের করে কাজ শুরু করুন।'
+                            : 'Time is tight — consider blocking study time today.',
+                        style: TextStyle(fontSize: 12.5, color: urgColor, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 22),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: FilledButton.icon(
+                onPressed: onOpenPlanner,
+                icon: const Icon(Icons.edit_calendar_rounded, size: 18),
+                label: Text(
+                  isBn ? 'প্ল্যানারে সময় নির্ধারণ করুন' : 'Schedule time in Planner',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.purple,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet asking why a completed schedule item is being undone —
+/// stops accidental undos and (later) feeds undo analytics.
+class _UndoReasonSheet extends StatelessWidget {
+  final String itemTitle;
+  const _UndoReasonSheet({required this.itemTitle});
+
+  @override
+  Widget build(BuildContext context) {
+    final isBn = AppSettings.instance.locale.languageCode == 'bn';
+    final reasons = [
+      (
+        icon: Icons.touch_app_outlined,
+        label: isBn ? 'ভুল করে ক্লিক হয়ে গেছে' : 'Accidentally marked',
+      ),
+      (
+        icon: Icons.hourglass_empty_rounded,
+        label: isBn ? 'এখনো শেষ হয়নি' : 'Not finished yet',
+      ),
+      (
+        icon: Icons.event_repeat_rounded,
+        label: isBn ? 'ক্লাসের সময় পরিবর্তন হয়েছে' : 'Class time changed',
+      ),
+    ];
+
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.only(top: 20),
+        decoration: BoxDecoration(
+          color: AppPalette.background(context),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        padding: const EdgeInsets.fromLTRB(22, 14, 22, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: AppPalette.border(context),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              isBn ? 'কেন আনডু করছেন?' : 'Why are you undoing this?',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: AppPalette.textPrimary(context),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              itemTitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                color: AppPalette.textSecondary(context),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ...reasons.map((r) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () => Navigator.pop(context, r.label),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                      decoration: BoxDecoration(
+                        color: AppPalette.card(context),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: AppPalette.border(context)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(r.icon, size: 19, color: AppPalette.textSecondary(context)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              r.label,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: AppPalette.textPrimary(context),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )),
+            const SizedBox(height: 4),
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: () => Navigator.pop(context, null),
+                child: Text(isBn ? 'বাতিল' : 'Cancel'),
+              ),
+            ),
+          ],
         ),
       ),
     );
