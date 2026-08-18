@@ -27,17 +27,64 @@ class _RegisterPageState extends State<RegisterPage> {
   static const double _cardOverlap = 30;
 
   static const List<String> _departments = [
-    'CSE',
-    'EEE',
-    'ECE',
-    'ME',
-    'CE',
-    'ICT',
-    'AE',
-    'NAE',
-    'BME',
-    'IPE',
-    'MPE',
+    // Engineering & Technology (Your original list + a few common ones)
+    'CSE', 'EEE', 'ECE', 'ME', 'CE', 'ICT', 'AE', 'NAE', 'BME', 'IPE', 'MPE',
+    'URP',
+    'Arch',
+    'SE', // Urban & Regional Planning, Architecture, Software Engineering
+    // Physical & Mathematical Sciences
+    'Physics',
+    'Chemistry',
+    'Mathematics',
+    'Statistics',
+    'Applied Math',
+    'Geology',
+    'Oceanography',
+
+    // Biological Sciences
+    'Botany',
+    'Zoology',
+    'Microbiology',
+    'BMB', // Biochemistry and Molecular Biology
+    'Pharmacy',
+    'Psychology',
+    'GE', // Geography & Environment
+    // Business Studies & IBA
+    'BBA', // General Business
+    'AIS', // Accounting & Information Systems
+    'Management',
+    'Marketing',
+    'Finance',
+    'Banking',
+    'MIS', // Management Information Systems
+    'IBA', // Institute of Business Administration
+    'THM', // Tourism & Hospitality Management
+    // Social Sciences
+    'Economics',
+    'Political Science',
+    'Sociology',
+    'IR', // International Relations
+    'MCJ', // Mass Communication & Journalism
+    'Public Administration',
+    'Anthropology',
+    'Criminology',
+    'Development Studies',
+
+    // Arts & Humanities
+    'English',
+    'Bengali',
+    'History',
+    'IHC', // Islamic History & Culture
+    'Philosophy',
+    'ISLM', // Information Science & Library Management
+    'Linguistics',
+
+    // Law
+    'Law',
+
+    // Fine Arts
+    'Fine Arts',
+    'Graphic Design',
   ];
 
   @override
@@ -54,9 +101,9 @@ class _RegisterPageState extends State<RegisterPage> {
     final password = _passwordController.text;
 
     if (name.isEmpty || email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.fillAllFields)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(AppStrings.fillAllFields)));
       return;
     }
     if (!AppStrings.isValidEmail(email)) {
@@ -80,9 +127,9 @@ class _RegisterPageState extends State<RegisterPage> {
       return;
     }
     if (password.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.passwordTooShort)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(AppStrings.passwordTooShort)));
       return;
     }
 
@@ -102,13 +149,15 @@ class _RegisterPageState extends State<RegisterPage> {
       // filled in later from Edit Profile). Failure is non-fatal — the
       // doc is re-created by _ensureUserProfile on the next sign-in.
       try {
-        await UserRepository().createProfile(AppUser(
-          id: uid,
-          fullName: name,
-          email: email,
-          department: _department!,
-          semester: _semester!,
-        ));
+        await UserRepository().createProfile(
+          AppUser(
+            id: uid,
+            fullName: name,
+            email: email,
+            department: _department!,
+            semester: _semester!,
+          ),
+        );
       } catch (e) {
         debugPrint('Failed to create user profile: $e');
       }
@@ -121,25 +170,31 @@ class _RegisterPageState extends State<RegisterPage> {
       }
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(AppStrings.authAccountCreated),
-        behavior: SnackBarBehavior.floating,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppStrings.authAccountCreated),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
       Navigator.pop(context);
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(AppStrings.authErrorMessage(e.code)),
-        backgroundColor: const Color(0xFFDC2626),
-        behavior: SnackBarBehavior.floating,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppStrings.authErrorMessage(e.code)),
+          backgroundColor: const Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('${AppStrings.authFailed} (${e.toString()})'),
-        backgroundColor: const Color(0xFFDC2626),
-        behavior: SnackBarBehavior.floating,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${AppStrings.authFailed} (${e.toString()})'),
+          backgroundColor: const Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -154,108 +209,108 @@ class _RegisterPageState extends State<RegisterPage> {
     return ListenableBuilder(
       listenable: AppSettings.instance,
       builder: (context, _) => Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFFF7FAFF), Color(0xFFF4F8FD), Color(0xFFF9FBFF)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFFF7FAFF), Color(0xFFF4F8FD), Color(0xFFF9FBFF)],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
           ),
-        ),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(
-                  height: _heroHeight,
-                  child: Stack(
-                    children: [
-                      const Positioned.fill(
-                        child: AuthAnimatedBackdrop(heroHeight: _heroHeight),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 8),
-                            _buildBackButton(context),
-                            const SizedBox(height: 10),
-                            Center(
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(25), 
-                                child: Image.asset(
-                                  'assets/Campus_Twin.png', 
-                                  height: 80, 
-                                  fit: BoxFit.contain,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 18),
-                            Center(
-                              child: Text(
-                                AppStrings.createAccountHero,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 27,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.5,
-                                  height: 1.1,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Center(
-                              child: Text(
-                                AppStrings.setStudentProfile,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13.5,
-                                  height: 1.3,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-                            Center(
-                              child: Wrap(
-                                alignment: WrapAlignment.center,
-                                spacing: 10,
-                                runSpacing: 8,
-                                children: [
-                                  AuthFeatureBadge(
-                                    icon: Icons.verified_outlined,
-                                    label: AppStrings.fastOnboarding,
-                                  ),
-                                  AuthFeatureBadge(
-                                    icon: Icons.lock_outline,
-                                    label: AppStrings.privateProfile,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+          child: SafeArea(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    height: _heroHeight,
+                    child: Stack(
+                      children: [
+                        const Positioned.fill(
+                          child: AuthAnimatedBackdrop(heroHeight: _heroHeight),
                         ),
-                      ),
-                    ],
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 8),
+                              _buildBackButton(context),
+                              const SizedBox(height: 10),
+                              Center(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(25),
+                                  child: Image.asset(
+                                    'assets/Campus_Twin.png',
+                                    height: 80,
+                                    fit: BoxFit.contain,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 18),
+                              Center(
+                                child: Text(
+                                  AppStrings.createAccountHero,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 27,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -0.5,
+                                    height: 1.1,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Center(
+                                child: Text(
+                                  AppStrings.setStudentProfile,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13.5,
+                                    height: 1.3,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              Center(
+                                child: Wrap(
+                                  alignment: WrapAlignment.center,
+                                  spacing: 10,
+                                  runSpacing: 8,
+                                  children: [
+                                    AuthFeatureBadge(
+                                      icon: Icons.verified_outlined,
+                                      label: AppStrings.fastOnboarding,
+                                    ),
+                                    AuthFeatureBadge(
+                                      icon: Icons.lock_outline,
+                                      label: AppStrings.privateProfile,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                Transform.translate(
-                  offset: const Offset(0, -_cardOverlap),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: _buildRegisterCard(context),
+                  Transform.translate(
+                    offset: const Offset(0, -_cardOverlap),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: _buildRegisterCard(context),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                _buildLoginPrompt(context),
-                const SizedBox(height: 24),
-              ],
+                  const SizedBox(height: 8),
+                  _buildLoginPrompt(context),
+                  const SizedBox(height: 24),
+                ],
+              ),
             ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -312,7 +367,10 @@ class _RegisterPageState extends State<RegisterPage> {
           const SizedBox(height: 6),
           Text(
             AppStrings.completeForm,
-            style: TextStyle(color: AppPalette.textSecondary(context), fontSize: 14.5),
+            style: TextStyle(
+              color: AppPalette.textSecondary(context),
+              fontSize: 14.5,
+            ),
           ),
           const SizedBox(height: 22),
           AppFieldLabel(AppStrings.fullName),
@@ -352,10 +410,7 @@ class _RegisterPageState extends State<RegisterPage> {
             icon: Icons.auto_stories_outlined,
             items: List.generate(
               8,
-              (i) => DropdownMenuItem(
-                value: i + 1,
-                child: Text('${i + 1}'),
-              ),
+              (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}')),
             ),
             onChanged: (v) => setState(() => _semester = v),
           ),
@@ -383,7 +438,10 @@ class _RegisterPageState extends State<RegisterPage> {
           const SizedBox(height: 10),
           Text(
             AppStrings.passwordHelper,
-            style: TextStyle(color: AppPalette.textSecondary(context), fontSize: 12.5),
+            style: TextStyle(
+              color: AppPalette.textSecondary(context),
+              fontSize: 12.5,
+            ),
           ),
           const SizedBox(height: 18),
           AppPrimaryButton(
@@ -400,7 +458,10 @@ class _RegisterPageState extends State<RegisterPage> {
     return Center(
       child: RichText(
         text: TextSpan(
-          style: TextStyle(color: AppPalette.textSecondary(context), fontSize: 14),
+          style: TextStyle(
+            color: AppPalette.textSecondary(context),
+            fontSize: 14,
+          ),
           children: [
             TextSpan(text: AppStrings.alreadyHaveAccount),
             WidgetSpan(
