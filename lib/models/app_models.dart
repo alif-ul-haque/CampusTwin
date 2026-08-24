@@ -40,6 +40,8 @@ class AppUser {
     required this.semester,
     this.profilePhoto,
     this.createdAt,
+    this.academicLevel,
+    this.academicTerm,
   });
 
   final String id; // == FirebaseAuth uid
@@ -49,6 +51,8 @@ class AppUser {
   final int semester;
   final String? profilePhoto;
   final DateTime? createdAt;
+  final int? academicLevel; // 1–4
+  final int? academicTerm;  // 1 or 2
 
   factory AppUser.fromMap(String id, Map<String, dynamic> map) => AppUser(
         id: id,
@@ -58,6 +62,8 @@ class AppUser {
         semester: _asInt(map['semester']),
         profilePhoto: map['profile_photo'] as String?,
         createdAt: _ts(map['created_at']),
+        academicLevel: map['academic_level'] as int?,
+        academicTerm: map['academic_term'] as int?,
       );
 
   Map<String, dynamic> toMap() => {
@@ -67,6 +73,8 @@ class AppUser {
         'semester': semester,
         'profile_photo': profilePhoto,
         'created_at': createdAt == null ? FieldValue.serverTimestamp() : _tsOrNow(createdAt),
+        if (academicLevel != null) 'academic_level': academicLevel,
+        if (academicTerm != null) 'academic_term': academicTerm,
       };
 }
 

@@ -11,6 +11,7 @@ import 'package:campus_twin/budget_page.dart';
 import 'package:campus_twin/app_blocker_page.dart';
 import 'package:campus_twin/leaderboard_page.dart';
 import 'package:campus_twin/app_settings.dart';
+import 'package:campus_twin/seed_courses.dart';
 import 'package:campus_twin/l10n.dart';
 import 'package:campus_twin/notifications_page.dart';
 import 'package:campus_twin/profile_edit_sheet.dart';
@@ -257,6 +258,10 @@ class _DashboardPageState extends State<DashboardPage>
 
   Future<void> _loadData() async {
     await _loadProfileFromDb();
+    
+    // Seed the global course catalog once the user is successfully authenticated
+    await CourseSeeder.seedCourses();
+    
     _DashboardRepository.loadDashboard();
     await Future.delayed(const Duration(milliseconds: 300));
     if (mounted) setState(() => _isLoading = false);

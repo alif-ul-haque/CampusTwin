@@ -72,6 +72,22 @@
         { "fieldPath": "user_id", "order": "ASCENDING" },
         { "fieldPath": "checkin_date", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "study_plans",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "user_id", "order": "ASCENDING" },
+        { "fieldPath": "generated_date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "course_catalog",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "level", "order": "ASCENDING" },
+        { "fieldPath": "term", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

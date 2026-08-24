@@ -177,6 +177,18 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Academic Level/Term ────────────────────────────────────────────────
+  int? _academicLevel;
+  int? _academicTerm;
+  int? get academicLevel => _academicLevel;
+  int? get academicTerm => _academicTerm;
+
+  void setAcademicInfo(int level, int term) {
+    _academicLevel = level;
+    _academicTerm = term;
+    notifyListeners();
+  }
+
   // ── Profile ────────────────────────────────────────────────────────────
   UserProfile _profile = const UserProfile(
     id: 'u1',
@@ -210,6 +222,9 @@ class AppSettings extends ChangeNotifier {
       phone: '',
       nickname: '',
     );
+    // Sync level/term from DB if set
+    if (user.academicLevel != null) _academicLevel = user.academicLevel;
+    if (user.academicTerm != null) _academicTerm = user.academicTerm;
     notifyListeners();
   }
 

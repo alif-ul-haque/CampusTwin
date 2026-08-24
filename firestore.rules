@@ -48,6 +48,11 @@ service cloud.firestore {
       allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
     }
 
+    match /course_catalog/{docId} {
+      allow read: if signedIn();
+      allow write: if signedIn(); // temporary for seeding the catalog
+    }
+
     match /assignments/{docId} {
       allow read: if signedIn();
       allow write: if false; // write via Cloud Function that checks course ownership

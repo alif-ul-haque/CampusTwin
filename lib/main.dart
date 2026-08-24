@@ -6,6 +6,7 @@ import 'package:campus_twin/firebase_options.dart';
 import 'package:campus_twin/welcome_page.dart';
 import 'package:campus_twin/theme.dart';
 import 'package:campus_twin/app_settings.dart';
+import 'package:campus_twin/planner_notifications.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,6 +14,7 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  await PlannerNotificationService.instance.init();
   runApp(const MyApp());
 }
 

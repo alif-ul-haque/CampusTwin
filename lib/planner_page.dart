@@ -1,10 +1,12 @@
 import 'package:campus_twin/app_settings.dart';
 import 'package:campus_twin/l10n.dart';
 import 'package:campus_twin/models/app_models.dart';
+import 'package:campus_twin/planner_notifications.dart';
 import 'package:campus_twin/theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 // The UI talks only to this contract. Replace MockPlannerRepository with an
 // API implementation later without changing PlannerPage or its widgets.
@@ -565,24 +567,30 @@ class FirestorePlannerRepository implements PlannerRepository {
     return uid;
   }
 
-  /// Returns the user's most recent study plan, creating an empty one if the
-  /// user has never generated a plan before.
+  /// Returns the user's study plan ID, creating one if none exists.
+  /// Uses a simple single-field query (no composite index needed).
+  String? _cachedPlanId;
   Future<String> _ensurePlan() async {
+    if (_cachedPlanId != null) return _cachedPlanId!;
     final uid = _requireUid();
+    // Single-field where query — no composite index required
     final plans = await _db
         .collection('study_plans')
         .where('user_id', isEqualTo: uid)
-        .orderBy('generated_date', descending: true)
         .limit(1)
         .get();
-    if (plans.docs.isNotEmpty) return plans.docs.first.id;
+    if (plans.docs.isNotEmpty) {
+      _cachedPlanId = plans.docs.first.id;
+      return _cachedPlanId!;
+    }
     final ref = await _db.collection('study_plans').add({
       'user_id': uid,
       'generated_date': Timestamp.now(),
       'total_hours': 0,
       'status': 'active',
     });
-    return ref.id;
+    _cachedPlanId = ref.id;
+    return _cachedPlanId!;
   }
 
   Future<Map<String, Course>> _loadCourses() async {
@@ -625,18 +633,46 @@ class FirestorePlannerRepository implements PlannerRepository {
 
   @override
   Future<List<PlannerSubject>> fetchSubjects() async {
-    final courses = await _loadCourses();
-    final subjects = <PlannerSubject>[];
-    for (final entry in courses.entries) {
-      subjects.add(PlannerSubject(
-        id: entry.key,
-        name: entry.value.courseTitle,
-        code: entry.value.courseCode,
-        colorValue: _palette[entry.key.hashCode.abs() % _palette.length],
-        weeklyTargetMinutes: 240,
-      ));
+    final uid = _requireUid();
+    final s = AppSettings.instance;
+    final level = s.academicLevel;
+    final term = s.academicTerm;
+
+    // Fall back to user-owned 'courses' if no level/term is set yet
+    if (level == null || term == null) {
+      final snapshot = await _db
+          .collection('courses')
+          .where('user_id', isEqualTo: uid)
+          .get();
+      return [
+        for (final doc in snapshot.docs)
+          PlannerSubject(
+            id: doc.id,
+            name: (doc.data()['name'] as String?) ?? '',
+            code: (doc.data()['code'] as String?) ?? '',
+            colorValue: _palette[doc.id.hashCode.abs() % _palette.length],
+            weeklyTargetMinutes: 240,
+          ),
+      ];
     }
-    return subjects;
+
+    // Load from global course_catalog filtered by level & term
+    final snapshot = await _db
+        .collection('course_catalog')
+        .where('level', isEqualTo: level)
+        .where('term', isEqualTo: term)
+        .get();
+
+    return [
+      for (final doc in snapshot.docs)
+        PlannerSubject(
+          id: doc.id,
+          name: (doc.data()['name'] as String?) ?? '',
+          code: (doc.data()['code'] as String?) ?? '',
+          colorValue: _palette[doc.id.hashCode.abs() % _palette.length],
+          weeklyTargetMinutes: 240,
+        ),
+    ];
   }
 
   @override
@@ -815,10 +851,34 @@ class _PlannerPageState extends State<PlannerPage> {
   @override
   void initState() {
     super.initState();
-    _repository = widget.repository ?? MockPlannerRepository.instance;
+    _repository = widget.repository ?? FirestorePlannerRepository();
     _weekStart = _startOfWeek(DateTime.now());
     _selectedDate = _dateOnly(DateTime.now());
-    _load();
+    // Check if the user has set their level/term before loading
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkAcademicSetup());
+  }
+
+  /// Shows the level/term setup sheet if the user hasn't set it yet.
+  /// After confirming, saves to Firestore and loads planner data.
+  Future<void> _checkAcademicSetup() async {
+    final s = AppSettings.instance;
+    if (s.academicLevel != null && s.academicTerm != null) {
+      // Already configured — load immediately
+      _load();
+      return;
+    }
+    if (!mounted) return;
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      isDismissible: false,
+      enableDrag: false,
+      builder: (_) => const LevelTermSetupSheet(),
+    );
+    if (confirmed == true) {
+      _load();
+    }
   }
 
   Future<void> _load({bool showLoader = true}) async {
@@ -835,7 +895,9 @@ class _PlannerPageState extends State<PlannerPage> {
         _error = null;
         _loading = false;
       });
-    } catch (_) {
+    } catch (e, stack) {
+      print('❌ Planner _load error: $e');
+      print(stack);
       if (!mounted) return;
       setState(() {
         _error = AppStrings.couldNotLoad;
@@ -1721,13 +1783,31 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
 
   Future<void> _pickTime(bool start) async {
     final current = start ? _startMinute : _endMinute;
+    final now = DateTime.now();
+    final isToday = _dateOnly(_date) == _dateOnly(now);
+    // For today, the earliest selectable time is current time (rounded up)
+    final minMinute = isToday ? (now.hour * 60 + now.minute) : 0;
+
     final picked = await showTimePicker(
       context: context,
-      initialTime: _toTimeOfDay(current),
+      initialTime: _toTimeOfDay(
+        // If current selection is already in the past, snap to minMinute
+        (isToday && current <= minMinute) ? minMinute + 1 : current,
+      ),
     );
     if (picked == null || !mounted) return;
+
+    final value = picked.hour * 60 + picked.minute;
+
+    // Reject past times for today
+    if (isToday && start && value <= minMinute) {
+      setState(() {
+        _timeError = 'Cannot schedule a task in the past.';
+      });
+      return;
+    }
+
     setState(() {
-      final value = picked.hour * 60 + picked.minute;
       if (start) {
         _startMinute = value;
         if (_endMinute <= value) {
@@ -1765,6 +1845,15 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
           note: _optionalString(_noteController.text),
         ),
       );
+      // Schedule smart notifications for the newly created task
+      PlannerNotificationService.instance.scheduleTaskNotifications(
+        taskId: task.id,
+        taskTitle: task.title,
+        taskType: task.type.apiValue,
+        taskDate: task.date,
+        startMinute: task.startMinute,
+        endMinute: task.endMinute,
+      ).catchError((_) {}); // fire-and-forget, never block the UI
       if (mounted) Navigator.pop(context, task);
     } on PlannerConflictException catch (error) {
       if (mounted) setState(() => _timeError = error.message);
@@ -2682,4 +2771,242 @@ int _isoWeekNumber(DateTime date) {
               )
               .inDays ~/
           7);
+}
+
+// =============================================================================
+// LEVEL / TERM SETUP SHEET
+// Shown once when the user has never set their academic level and term.
+// =============================================================================
+
+class LevelTermSetupSheet extends StatefulWidget {
+  const LevelTermSetupSheet({super.key});
+
+  @override
+  State<LevelTermSetupSheet> createState() => _LevelTermSetupSheetState();
+}
+
+class _LevelTermSetupSheetState extends State<LevelTermSetupSheet> {
+  int? _selectedLevel;
+  int? _selectedTerm;
+  bool _saving = false;
+
+  static const _accent = Color(0xFF4F46E5);
+  static const _levels = [1, 2, 3, 4];
+  static const _terms = [1, 2];
+
+  Future<void> _onConfirm() async {
+    final level = _selectedLevel;
+    final term = _selectedTerm;
+    if (level == null || term == null) return;
+
+    // Show confirmation dialog
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Confirm Selection', style: TextStyle(fontWeight: FontWeight.w800)),
+        content: Text(
+          'You are Level $level, Term $term student.\n\nAre you sure? This will be used to load your courses.',
+          style: const TextStyle(fontSize: 14.5, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Go Back', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _accent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true || !mounted) return;
+
+    setState(() => _saving = true);
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        await FirebaseFirestore.instance.collection('users').doc(uid).set(
+          {'academic_level': level, 'academic_term': term},
+          SetOptions(merge: true),
+        );
+      }
+      AppSettings.instance.setAcademicInfo(level, term);
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mediaQ = MediaQuery.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? const Color(0xFF1E1E2E) : Colors.white;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      padding: EdgeInsets.fromLTRB(24, 16, 24, 24 + mediaQ.viewInsets.bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Handle bar
+          Center(
+            child: Container(
+              width: 40, height: 4,
+              decoration: BoxDecoration(color: Colors.grey.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(999)),
+            ),
+          ),
+          const SizedBox(height: 24),
+          // Header
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)]),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(Icons.school_rounded, color: Colors.white, size: 24),
+              ),
+              const SizedBox(width: 14),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Academic Setup',
+                    style: TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.w800,
+                      color: isDark ? Colors.white : const Color(0xFF0F0F23),
+                    ),
+                  ),
+                  Text('Select your current Level & Term',
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 28),
+
+          // Level picker
+          Text('Level', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+            color: isDark ? Colors.grey.shade300 : Colors.grey.shade700)),
+          const SizedBox(height: 10),
+          Row(
+            children: _levels.map((l) {
+              final sel = _selectedLevel == l;
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: GestureDetector(
+                    onTap: () { HapticFeedback.selectionClick(); setState(() => _selectedLevel = l); },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: sel ? _accent : (isDark ? const Color(0xFF2A2A3E) : const Color(0xFFF3F4F6)),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: sel ? _accent : Colors.transparent,
+                          width: 2,
+                        ),
+                        boxShadow: sel ? [BoxShadow(color: _accent.withValues(alpha: 0.30), blurRadius: 12, offset: const Offset(0, 4))] : [],
+                      ),
+                      child: Center(
+                        child: Text('L $l',
+                          style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w800,
+                            color: sel ? Colors.white : (isDark ? Colors.grey.shade300 : const Color(0xFF374151)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+
+          const SizedBox(height: 22),
+
+          // Term picker
+          Text('Term', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+            color: isDark ? Colors.grey.shade300 : Colors.grey.shade700)),
+          const SizedBox(height: 10),
+          Row(
+            children: _terms.map((t) {
+              final sel = _selectedTerm == t;
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: t == 1 ? 8 : 0),
+                  child: GestureDetector(
+                    onTap: () { HapticFeedback.selectionClick(); setState(() => _selectedTerm = t); },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: sel ? const Color(0xFF0891B2) : (isDark ? const Color(0xFF2A2A3E) : const Color(0xFFF3F4F6)),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: sel ? const Color(0xFF0891B2) : Colors.transparent,
+                          width: 2,
+                        ),
+                        boxShadow: sel ? [BoxShadow(color: const Color(0xFF0891B2).withValues(alpha: 0.30), blurRadius: 12, offset: const Offset(0, 4))] : [],
+                      ),
+                      child: Center(
+                        child: Text('Term $t',
+                          style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w800,
+                            color: sel ? Colors.white : (isDark ? Colors.grey.shade300 : const Color(0xFF374151)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+
+          const SizedBox(height: 32),
+
+          // Confirm button
+          SizedBox(
+            width: double.infinity,
+            height: 54,
+            child: ElevatedButton(
+              onPressed: (_selectedLevel == null || _selectedTerm == null || _saving) ? null : _onConfirm,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _accent,
+                disabledBackgroundColor: _accent.withValues(alpha: 0.35),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 0,
+              ),
+              child: _saving
+                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+                  : const Text('Confirm & Continue',
+                      style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800, letterSpacing: 0.2)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
