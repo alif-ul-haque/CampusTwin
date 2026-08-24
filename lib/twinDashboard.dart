@@ -283,7 +283,64 @@ class _DashboardPageState extends State<DashboardPage>
     _DashboardRepository.loadDashboard();
     await _loadWeeklyHoursFromDb();
     await _loadEnrolledCoursesFromCatalog();
+    await _loadSubjectDistributionFromDb();
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  /// Builds the Subject Distribution chart from completed `study_sessions`:
+  /// total completed study time per course (of the user's Level & Term),
+  /// converted to percentages — top 5 courses, highest first. With no data
+  /// yet every course shows 0%.
+  Future<void> _loadSubjectDistributionFromDb() async {
+    final s = AppSettings.instance;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final courses = _catalogCourses;
+    if (uid == null || courses.isEmpty) return;
+    try {
+      // Completed study minutes per course
+      final snap = await FirebaseFirestore.instance
+          .collection('study_sessions')
+          .where('user_id', isEqualTo: uid)
+          .where('completed', isEqualTo: true)
+          .get();
+      final minutesByCourse = <String, int>{};
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final courseId = data['course_id'] as String?;
+        if (courseId == null) continue;
+        minutesByCourse[courseId] = (minutesByCourse[courseId] ?? 0) +
+            ((data['duration_minutes'] as num?)?.toInt() ??
+                (((data['end_minute'] as num?)?.toInt() ?? 0) -
+                    ((data['start_minute'] as num?)?.toInt() ?? 0)));
+      }
+
+      final totalTime =
+          minutesByCourse.values.fold<int>(0, (sum, m) => sum + m);
+
+      // Every Level & Term course gets an entry (0% when no sessions yet),
+      // sorted by completed time descending, top 5.
+      final entries = courses
+          .map((c) {
+            final minutes = minutesByCourse[c['id']] ?? 0;
+            final label = (c['code']?.isEmpty ?? true)
+                ? (c['name'] ?? '')
+                : ((c['name']?.isEmpty ?? true) || c['name'] == c['code'])
+                    ? c['code']!
+                    : '${c['code']} · ${c['name']}';
+            return MapEntry(
+                label, totalTime > 0 ? minutes / totalTime : 0.0);
+          })
+          .toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+
+      if (!mounted) return;
+      setState(() {
+        _DashboardRepository.subjectDistribution =
+            Map.fromEntries(entries.take(5));
+      });
+    } catch (e) {
+      debugPrint('Failed to load subject distribution: $e');
+    }
   }
 
   /// Loads the user's enrolled courses from the global `course_catalog`
@@ -304,6 +361,7 @@ class _DashboardPageState extends State<DashboardPage>
         _catalogCourses = [
           for (final doc in snap.docs)
             {
+              'id': doc.id,
               'code': (doc.data()['code'] as String?) ?? '',
               'name': (doc.data()['name'] as String?) ?? '',
             },
