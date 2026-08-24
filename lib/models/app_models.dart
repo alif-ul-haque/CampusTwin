@@ -42,6 +42,7 @@ class AppUser {
     this.createdAt,
     this.academicLevel,
     this.academicTerm,
+    this.electiveCourses = const [],
   });
 
   final String id; // == FirebaseAuth uid
@@ -53,6 +54,7 @@ class AppUser {
   final DateTime? createdAt;
   final int? academicLevel; // 1–4
   final int? academicTerm;  // 1 or 2
+  final List<String> electiveCourses; // chosen elective catalog ids
 
   factory AppUser.fromMap(String id, Map<String, dynamic> map) => AppUser(
         id: id,
@@ -64,6 +66,10 @@ class AppUser {
         createdAt: _ts(map['created_at']),
         academicLevel: map['academic_level'] as int?,
         academicTerm: map['academic_term'] as int?,
+        electiveCourses: (map['elective_courses'] as List?)
+                ?.whereType<String>()
+                .toList() ??
+            const [],
       );
 
   Map<String, dynamic> toMap() => {
@@ -75,6 +81,7 @@ class AppUser {
         'created_at': createdAt == null ? FieldValue.serverTimestamp() : _tsOrNow(createdAt),
         if (academicLevel != null) 'academic_level': academicLevel,
         if (academicTerm != null) 'academic_term': academicTerm,
+        if (electiveCourses.isNotEmpty) 'elective_courses': electiveCourses,
       };
 }
 

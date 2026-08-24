@@ -675,15 +675,21 @@ class FirestorePlannerRepository implements PlannerRepository {
       ];
     }
 
-    // Load from global course_catalog filtered by level & term
+    // Load from global course_catalog filtered by level & term.
+    // Electives are only shown when the user picked them in setup.
     final snapshot = await _db
         .collection('course_catalog')
         .where('level', isEqualTo: level)
         .where('term', isEqualTo: term)
         .get();
 
+    final allowed = snapshot.docs
+        .where((doc) =>
+            AppSettings.instance.isCourseAllowed(doc.data(), doc.id))
+        .toList();
+
     return [
-      for (final doc in snapshot.docs)
+      for (final doc in allowed)
         PlannerSubject(
           id: doc.id,
           name: (doc.data()['name'] as String?) ?? '',
@@ -2924,10 +2930,72 @@ class _LevelTermSetupSheetState extends State<LevelTermSetupSheet> {
   int? _selectedLevel;
   int? _selectedTerm;
   bool _saving = false;
+  List<Map<String, dynamic>> _electives = [];
+  String? _theoryElective; // doc id
+  String? _sessionalElective; // doc id (L4T2 only)
 
   static const _accent = Color(0xFF4F46E5);
   static const _levels = [1, 2, 3, 4];
   static const _terms = [1, 2];
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedLevel = AppSettings.instance.academicLevel;
+    _selectedTerm = AppSettings.instance.academicTerm;
+    if (_selectedLevel != null && _selectedTerm != null) {
+      _loadElectives();
+    }
+  }
+
+  bool get _needsElectives =>
+      _selectedLevel == 4; // L4T1: 1 theory elective; L4T2: + 1 sessional
+
+  List<Map<String, dynamic>> get _theoryOptions => _electives
+      .where((e) => (e['data']['type'] as String?) == 'Theory')
+      .toList();
+
+  List<Map<String, dynamic>> get _sessionalOptions => _electives
+      .where((e) => (e['data']['type'] as String?) == 'Sessional')
+      .toList();
+
+  Future<void> _loadElectives() async {
+    final level = _selectedLevel;
+    final term = _selectedTerm;
+    if (level == null || term == null || !_needsElectives) {
+      if (mounted) setState(() => _electives = []);
+      return;
+    }
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('course_catalog')
+          .where('level', isEqualTo: level)
+          .where('term', isEqualTo: term)
+          .where('isElective', isEqualTo: true)
+          .get();
+      if (!mounted) return;
+      setState(() {
+        _electives = [
+          for (final d in snap.docs) {'id': d.id, 'data': d.data()},
+        ];
+        _theoryElective = null;
+        _sessionalElective = null;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _electives = []);
+    }
+  }
+
+  bool get _electivesValid {
+    if (!_needsElectives) return true;
+    final hasTheory =
+        _theoryOptions.isEmpty || _theoryElective != null;
+    final needSessional = _selectedTerm == 2;
+    final hasSessional =
+        !needSessional || _sessionalOptions.isEmpty ||
+            _sessionalElective != null;
+    return hasTheory && hasSessional;
+  }
 
   Future<void> _onConfirm() async {
     final level = _selectedLevel;
@@ -2969,11 +3037,28 @@ class _LevelTermSetupSheetState extends State<LevelTermSetupSheet> {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid != null) {
         await FirebaseFirestore.instance.collection('users').doc(uid).set(
-          {'academic_level': level, 'academic_term': term},
+          {
+            'academic_level': level,
+            'academic_term': term,
+            if (_needsElectives)
+              'elective_courses': [
+                if (_theoryElective != null) _theoryElective!,
+                if (_sessionalElective != null) _sessionalElective!,
+              ],
+          },
           SetOptions(merge: true),
         );
       }
-      AppSettings.instance.setAcademicInfo(level, term);
+      AppSettings.instance.setAcademicInfo(
+        level,
+        term,
+        electiveIds: _needsElectives
+            ? [
+                if (_theoryElective != null) _theoryElective!,
+                if (_sessionalElective != null) _sessionalElective!,
+              ]
+            : null,
+      );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
@@ -2983,6 +3068,51 @@ class _LevelTermSetupSheetState extends State<LevelTermSetupSheet> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Widget _electiveDropdown({
+    required String? value,
+    required List<Map<String, dynamic>> options,
+    required String hint,
+    required bool isDark,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2A2A3E) : const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _accent.withValues(alpha: 0.35)),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          isExpanded: true,
+          hint: Text(hint,
+              style: TextStyle(
+                  fontSize: 13.5,
+                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600)),
+          icon: const Icon(Icons.expand_more_rounded, size: 20),
+          dropdownColor:
+              isDark ? const Color(0xFF2A2A3E) : Colors.white,
+          items: [
+            for (final opt in options)
+              DropdownMenuItem(
+                value: opt['id'] as String,
+                child: Text(
+                  '${opt['data']['code']} — ${opt['data']['name']}',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : const Color(0xFF111827)),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+          onChanged: onChanged,
+        ),
+      ),
+    );
   }
 
   @override
@@ -3052,7 +3182,7 @@ class _LevelTermSetupSheetState extends State<LevelTermSetupSheet> {
                 child: Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: GestureDetector(
-                    onTap: () { HapticFeedback.selectionClick(); setState(() => _selectedLevel = l); },
+                    onTap: () { HapticFeedback.selectionClick(); _selectedLevel = l; _loadElectives(); setState(() {}); },
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       height: 56,
@@ -3093,7 +3223,7 @@ class _LevelTermSetupSheetState extends State<LevelTermSetupSheet> {
                 child: Padding(
                   padding: EdgeInsets.only(right: t == 1 ? 8 : 0),
                   child: GestureDetector(
-                    onTap: () { HapticFeedback.selectionClick(); setState(() => _selectedTerm = t); },
+                    onTap: () { HapticFeedback.selectionClick(); _selectedTerm = t; _loadElectives(); setState(() {}); },
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       height: 56,
@@ -3121,14 +3251,46 @@ class _LevelTermSetupSheetState extends State<LevelTermSetupSheet> {
             }).toList(),
           ),
 
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
+
+          // ── Elective pickers (Level 4 only) ─────────────────────────
+          if (_needsElectives && _selectedTerm != null) ...[
+            Text('Technical Elective (Theory)',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                  color: isDark ? Colors.grey.shade300 : Colors.grey.shade700)),
+            const SizedBox(height: 8),
+            _electiveDropdown(
+              value: _theoryElective,
+              options: _theoryOptions,
+              hint: 'Select one theory elective',
+              isDark: isDark,
+              onChanged: (v) => setState(() => _theoryElective = v),
+            ),
+            if (_selectedTerm == 2) ...[
+              const SizedBox(height: 16),
+              Text('Technical Elective (Sessional)',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.grey.shade300 : Colors.grey.shade700)),
+              const SizedBox(height: 8),
+              _electiveDropdown(
+                value: _sessionalElective,
+                options: _sessionalOptions,
+                hint: 'Select one sessional elective',
+                isDark: isDark,
+                onChanged: (v) => setState(() => _sessionalElective = v),
+              ),
+            ],
+            const SizedBox(height: 8),
+          ],
+
+          const SizedBox(height: 16),
 
           // Confirm button
           SizedBox(
             width: double.infinity,
             height: 54,
             child: ElevatedButton(
-              onPressed: (_selectedLevel == null || _selectedTerm == null || _saving) ? null : _onConfirm,
+              onPressed: (_selectedLevel == null || _selectedTerm == null || !_electivesValid || _saving) ? null : _onConfirm,
               style: ElevatedButton.styleFrom(
                 backgroundColor: _accent,
                 disabledBackgroundColor: _accent.withValues(alpha: 0.35),

@@ -357,14 +357,17 @@ class _DashboardPageState extends State<DashboardPage>
           .where('term', isEqualTo: term)
           .get();
       if (!mounted) return;
+      final electives = s.electiveCourseIds;
       setState(() {
         _catalogCourses = [
           for (final doc in snap.docs)
-            {
-              'id': doc.id,
-              'code': (doc.data()['code'] as String?) ?? '',
-              'name': (doc.data()['name'] as String?) ?? '',
-            },
+            if (doc.data()['isElective'] != true ||
+                electives.contains(doc.id))
+              {
+                'id': doc.id,
+                'code': (doc.data()['code'] as String?) ?? '',
+                'name': (doc.data()['name'] as String?) ?? '',
+              },
         ];
       });
     } catch (e) {

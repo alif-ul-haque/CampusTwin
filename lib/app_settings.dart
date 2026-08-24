@@ -210,13 +210,26 @@ class AppSettings extends ChangeNotifier {
   // ── Academic Level/Term ────────────────────────────────────────────────
   int? _academicLevel;
   int? _academicTerm;
+  List<String> _electiveCourseIds = [];
   int? get academicLevel => _academicLevel;
   int? get academicTerm => _academicTerm;
 
-  void setAcademicInfo(int level, int term) {
+  /// Catalog doc ids of the electives the user picked during setup
+  /// (L4T1: 1 theory elective; L4T2: 1 theory + 1 sessional elective).
+  List<String> get electiveCourseIds => _electiveCourseIds;
+
+  void setAcademicInfo(int level, int term, {List<String>? electiveIds}) {
     _academicLevel = level;
     _academicTerm = term;
+    if (electiveIds != null) _electiveCourseIds = electiveIds;
     notifyListeners();
+  }
+
+  /// Whether a course_catalog entry should be shown for this user:
+  /// non-electives always; electives only when the user picked them.
+  bool isCourseAllowed(Map<String, dynamic>? data, String docId) {
+    if (data == null || data['isElective'] != true) return true;
+    return _electiveCourseIds.contains(docId);
   }
 
   // ── Profile ────────────────────────────────────────────────────────────
@@ -255,6 +268,9 @@ class AppSettings extends ChangeNotifier {
     // Sync level/term from DB if set
     if (user.academicLevel != null) _academicLevel = user.academicLevel;
     if (user.academicTerm != null) _academicTerm = user.academicTerm;
+    if (user.electiveCourses.isNotEmpty) {
+      _electiveCourseIds = user.electiveCourses;
+    }
     notifyListeners();
   }
 
