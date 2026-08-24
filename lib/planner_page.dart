@@ -13,6 +13,8 @@ import 'package:flutter/services.dart';
 abstract class PlannerRepository {
   Future<List<PlannerSubject>> fetchSubjects();
 
+  Stream<List<StudyBlock>> streamDay(DateTime day);
+
   Future<List<StudyBlock>> fetchWeek(DateTime weekStart);
 
   Future<StudyBlock> createTask(StudyBlockDraft draft);
@@ -673,6 +675,27 @@ class FirestorePlannerRepository implements PlannerRepository {
           weeklyTargetMinutes: 240,
         ),
     ];
+  }
+
+  @override
+  Stream<List<StudyBlock>> streamDay(DateTime day) async* {
+    final planId = await _ensurePlan();
+    final courses = await _loadCourses();
+    final target = Timestamp.fromDate(_dateOnly(day));
+
+    yield* _db
+        .collection('study_sessions')
+        .where('plan_id', isEqualTo: planId)
+        .where('session_date', isEqualTo: target)
+        .snapshots()
+        .map((snapshot) {
+      final blocks = <StudyBlock>[];
+      for (final doc in snapshot.docs) {
+        blocks.add(_toBlock(doc.id, doc.data(), courses));
+      }
+      blocks.sort(_sortTasks);
+      return blocks;
+    });
   }
 
   @override
@@ -1762,6 +1785,25 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
     super.initState();
     _date = widget.initialDate;
     _subjectId = widget.subjects.isEmpty ? null : widget.subjects.first.id;
+
+    // If scheduling for today, suggest a time in the near future instead of hardcoded 9:00 AM
+    final now = DateTime.now();
+    final isToday = _date.year == now.year && _date.month == now.month && _date.day == now.day;
+    if (isToday) {
+      int currentMinute = now.hour * 60 + now.minute;
+      // Round up to the next half hour or full hour (e.g., 9:32 PM -> 10:00 PM)
+      int remainder = currentMinute % 30;
+      int suggestedStart = currentMinute + (30 - remainder);
+      
+      // Cap at 11:00 PM (1320 minutes) if it's too late
+      if (suggestedStart > 23 * 60) suggestedStart = 23 * 60;
+      
+      _startMinute = suggestedStart;
+      _endMinute = _startMinute + 60;
+      if (_endMinute > 24 * 60 - 1) {
+        _endMinute = 24 * 60 - 1; // 11:59 PM cap
+      }
+    }
   }
 
   @override
@@ -1778,13 +1820,32 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
       firstDate: _dateOnly(DateTime.now()),
       lastDate: DateTime.now().add(const Duration(days: 730)),
     );
-    if (picked != null && mounted) setState(() => _date = _dateOnly(picked));
+    if (picked != null && mounted) {
+      setState(() {
+        _date = _dateOnly(picked);
+        final now = DateTime.now();
+        final isToday = _date.year == now.year && _date.month == now.month && _date.day == now.day;
+        if (isToday) {
+          int currentMinute = now.hour * 60 + now.minute;
+          if (_startMinute < currentMinute) {
+            int remainder = currentMinute % 30;
+            int suggestedStart = currentMinute + (30 - remainder);
+            if (suggestedStart > 23 * 60) suggestedStart = 23 * 60;
+            
+            int diff = _endMinute - _startMinute; // preserve duration
+            _startMinute = suggestedStart;
+            _endMinute = _startMinute + diff;
+            if (_endMinute > 24 * 60 - 1) _endMinute = 24 * 60 - 1;
+          }
+        }
+      });
+    }
   }
 
   Future<void> _pickTime(bool start) async {
     final current = start ? _startMinute : _endMinute;
     final now = DateTime.now();
-    final isToday = _dateOnly(_date) == _dateOnly(now);
+    final isToday = _date.year == now.year && _date.month == now.month && _date.day == now.day;
     // For today, the earliest selectable time is current time (rounded up)
     final minMinute = isToday ? (now.hour * 60 + now.minute) : 0;
 

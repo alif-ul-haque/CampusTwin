@@ -609,11 +609,7 @@ class _DashboardPageState extends State<DashboardPage>
             const SizedBox(height: 20),
             _buildVisualizationSection(),
             const SizedBox(height: 22),
-            _sectionTitle(
-              AppStrings.todaySchedule,
-              trailing:
-                  '${_DashboardRepository.schedule.where((s) => s.isCompleted).length}/${_DashboardRepository.schedule.length}',
-            ),
+            _sectionTitle(AppStrings.todaySchedule),
             const SizedBox(height: 10),
             _buildScheduleList(),
             const SizedBox(height: 22),
@@ -1124,178 +1120,143 @@ class _DashboardPageState extends State<DashboardPage>
   }
 
   Widget _buildScheduleList() {
-    final items = _DashboardRepository.schedule;
-    if (items.isEmpty) {
-      return _emptyCard(Icons.event_available_rounded, 'No schedule today.');
-    }
-    if (items.every((s) => s.isCompleted)) {
-      return _emptyCard(Icons.task_alt_rounded, 'All done for today!');
-    }
-    return Column(
-      children: items.map((item) {
-        final isClass = item.type == 'Class' || item.type == 'Lab';
-        final accent = isClass ? AppColors.purple : const Color(0xFF06B6D4);
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: GestureDetector(
-            onTap: () => _handleToggleSchedule(item),
-            child: _GlowCard(
-              radius: 14,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  color: item.isCompleted
-                      ? const Color(0xFF10B981).withValues(alpha: 0.04)
-                      : null,
-                ),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 40,
-                      child: Column(
-                        children: [
-                          Text(
-                            item.time.format(context),
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              color: item.isCompleted
-                                  ? AppPalette.textSecondary(context).withValues(
-                                      alpha: 0.5,
-                                    )
-                                  : AppPalette.textPrimary(context),
-                            ),
-                          ),
-                          Text(
-                            item.endTime.format(context),
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w500,
-                              color: AppPalette.textSecondary(context).withValues(
-                                alpha: item.isCompleted ? 0.3 : 0.6,
+    return StreamBuilder<List<StudyBlock>>(
+      stream: FirestorePlannerRepository().streamDay(DateTime.now()),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return _emptyCard(Icons.error_outline, 'Failed to load schedule.');
+        }
+        if (!snapshot.hasData) {
+          return const Padding(
+            padding: EdgeInsets.all(20),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        
+        // Only show tasks that are NOT completed yet
+        final items = snapshot.data!.where((b) => !b.completed).toList();
+        
+        if (items.isEmpty) {
+          return _emptyCard(Icons.task_alt_rounded, 'All done for today!');
+        }
+
+        return Column(
+          children: items.map((item) {
+            final isClass = item.type.apiValue == 'Class' || item.type.apiValue == 'Lab';
+            final accent = isClass ? AppColors.purple : const Color(0xFF06B6D4);
+            
+            final startTime = TimeOfDay(hour: item.startMinute ~/ 60, minute: item.startMinute % 60);
+            final endTime = TimeOfDay(hour: item.endMinute ~/ 60, minute: item.endMinute % 60);
+            
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _GlowCard(
+                radius: 14,
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 45, // slightly wider to accommodate PM/AM comfortably
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Text(
+                              startTime.format(context),
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: AppPalette.textPrimary(context),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      width: 3,
-                      height: 34,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            item.isCompleted ? const Color(0xFF10B981) : accent,
-                            item.isCompleted
-                                ? const Color(0xFF10B981).withValues(alpha: 0.4)
-                                : accent.withValues(alpha: 0.4),
+                            Text(
+                              endTime.format(context),
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                                color: AppPalette.textSecondary(context).withValues(alpha: 0.6),
+                              ),
+                            ),
                           ],
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
                         ),
-                        borderRadius: BorderRadius.circular(4),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ImageFiltered(
-                        imageFilter: ImageFilter.blur(
-                          sigmaX: item.isCompleted ? 1.4 : 0,
-                          sigmaY: item.isCompleted ? 1.4 : 0,
+                      const SizedBox(width: 10),
+                      Container(
+                        width: 3,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              accent,
+                              accent.withValues(alpha: 0.4),
+                            ],
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                          ),
+                          borderRadius: BorderRadius.circular(4),
                         ),
-                        child: Opacity(
-                          opacity: item.isCompleted ? 0.55 : 1.0,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                item.title,
-                                style: TextStyle(
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppPalette.textPrimary(context),
-                                ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.title,
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                                color: AppPalette.textPrimary(context),
                               ),
-                              const SizedBox(height: 2),
-                              Row(
-                                children: [
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                Text(
+                                  item.type.label,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: accent.withValues(alpha: 0.8),
+                                  ),
+                                ),
+                                if (item.subjectName != null && item.subjectName!.isNotEmpty) ...[
                                   Text(
-                                    item.type,
+                                    ' · ',
                                     style: TextStyle(
                                       fontSize: 11.5,
-                                      color: accent.withValues(alpha: 0.8),
+                                      color: AppPalette.textSecondary(context).withValues(alpha: 0.5),
                                     ),
                                   ),
-                                  if (item.location != null) ...[
-                                    Text(
-                                      ' · ',
+                                  Expanded(
+                                    child: Text(
+                                      item.subjectName!,
                                       style: TextStyle(
                                         fontSize: 11.5,
-                                        color: AppPalette.textSecondary(context).withValues(
-                                          alpha: 0.5,
-                                        ),
+                                        color: AppPalette.textSecondary(context).withValues(alpha: 0.7),
                                       ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                    Icon(
-                                      Icons.location_on_outlined,
-                                      size: 11,
-                                      color: AppPalette.textSecondary(context).withValues(
-                                        alpha: 0.5,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 2),
-                                    Text(
-                                      item.location!,
-                                      style: TextStyle(
-                                        fontSize: 11.5,
-                                        color: AppPalette.textSecondary(context).withValues(
-                                          alpha: 0.7,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ],
-                              ),
-                            ],
-                          ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      width: 22,
-                      height: 22,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: item.isCompleted
-                            ? const Color(0xFF10B981)
-                            : Colors.transparent,
-                        border: Border.all(
-                          color: item.isCompleted
-                              ? const Color(0xFF10B981)
-                              : AppPalette.border(context),
-                          width: 2,
-                        ),
-                      ),
-                      child: item.isCompleted
-                          ? const Icon(
-                              Icons.check_rounded,
-                              color: Colors.white,
-                              size: 13,
-                            )
-                          : null,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          }).toList(),
         );
-      }).toList(),
+      },
     );
   }
 

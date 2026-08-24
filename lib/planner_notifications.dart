@@ -1,4 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -16,7 +17,11 @@ class PlannerNotificationService {
 
   Future<void> init() async {
     if (_initialized) return;
+    
+    // Set up correct local timezone for scheduling
     tz_data.initializeTimeZones();
+    final timeZoneName = await FlutterTimezone.getLocalTimezone();
+    tz.setLocalLocation(tz.getLocation(timeZoneName));
 
     const androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -89,36 +94,46 @@ class PlannerNotificationService {
       String body, {
       bool critical = false,
     }) async {
-      if (when.isBefore(now)) return;
+      final now = DateTime.now();
+      final details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          critical ? 'planner_critical' : 'planner_reminders',
+          critical ? 'Critical Deadline Alerts' : 'Planner Reminders',
+          channelDescription: critical
+              ? 'Last-hour deadline critical alerts'
+              : 'Study planner task reminders',
+          importance: critical ? Importance.max : Importance.high,
+          priority: critical ? Priority.max : Priority.high,
+          playSound: true,
+          enableVibration: true,
+          fullScreenIntent: critical,
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+          interruptionLevel: critical
+              ? InterruptionLevel.critical
+              : InterruptionLevel.active,
+        ),
+      );
+
+      if (when.isBefore(now)) {
+        // If the reminder time passed less than 5 minutes ago (e.g. user just scheduled 
+        // a task that starts in 4 minutes), show the reminder immediately instead of dropping it.
+        if (now.difference(when).inMinutes < 5) {
+          await _plugin.show(base + notifIndex++, title, body, details);
+        }
+        return;
+      }
+
       final tzWhen = tz.TZDateTime.from(when, tz.local);
       await _plugin.zonedSchedule(
         base + notifIndex++,
         title,
         body,
         tzWhen,
-        NotificationDetails(
-          android: AndroidNotificationDetails(
-            critical ? 'planner_critical' : 'planner_reminders',
-            critical ? 'Critical Deadline Alerts' : 'Planner Reminders',
-            channelDescription: critical
-                ? 'Last-hour deadline critical alerts'
-                : 'Study planner task reminders',
-            importance:
-                critical ? Importance.max : Importance.high,
-            priority: critical ? Priority.max : Priority.high,
-            playSound: true,
-            enableVibration: true,
-            fullScreenIntent: critical,
-          ),
-          iOS: DarwinNotificationDetails(
-            presentAlert: true,
-            presentBadge: true,
-            presentSound: true,
-            interruptionLevel: critical
-                ? InterruptionLevel.critical
-                : InterruptionLevel.active,
-          ),
-        ),
+        details,
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
