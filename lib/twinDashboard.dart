@@ -451,6 +451,11 @@ class _DashboardPageState extends State<DashboardPage>
       builder: (_) => _ProfileSheet(
         profile: p,
         catalogCourses: _catalogCourses,
+        onElectivesChanged: () async {
+          await _loadEnrolledCoursesFromCatalog();
+          await _loadSubjectDistributionFromDb();
+          if (mounted) setState(() {});
+        },
         onEditProfile: () {
           Navigator.of(context).pop();
           Navigator.of(
@@ -1918,10 +1923,12 @@ class _ProfileSheet extends StatelessWidget {
   final VoidCallback onEditProfile;
   final VoidCallback onOpenNotifications;
   final List<Map<String, String>> catalogCourses;
+  final Future<void> Function() onElectivesChanged;
 
   const _ProfileSheet({
     required this.profile,
     required this.catalogCourses,
+    required this.onElectivesChanged,
     required this.onSignOut,
     required this.onNavigateToPlanner,
     required this.onNavigateToHabits,
@@ -2109,6 +2116,10 @@ class _ProfileSheet extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: 18),
+          // Elective course selection — changing it re-filters the enrolled
+          // course list, subject distribution and planner courses.
+          _ElectiveSelector(onChanged: onElectivesChanged),
           const SizedBox(height: 18),
           // Enrolled courses (relates to Planner)
           Container(
@@ -2731,6 +2742,248 @@ class _ProfileSheet extends StatelessWidget {
               size: 18,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// ELECTIVE SELECTOR — pick/change electives from the profile sheet.
+// L4T1: 1 theory elective · L4T2: 1 theory + 1 sessional elective.
+// Saving updates users/{uid}.elective_courses, then re-filters the enrolled
+// course list, subject distribution and planner courses via [onChanged].
+// =============================================================================
+
+class _ElectiveSelector extends StatefulWidget {
+  final Future<void> Function() onChanged;
+  const _ElectiveSelector({required this.onChanged});
+
+  @override
+  State<_ElectiveSelector> createState() => _ElectiveSelectorState();
+}
+
+class _ElectiveSelectorState extends State<_ElectiveSelector> {
+  List<Map<String, dynamic>> _theoryOptions = [];
+  List<Map<String, dynamic>> _sessionalOptions = [];
+  String? _theory;
+  String? _sessional;
+  bool _saving = false;
+
+  bool get _isBn => AppSettings.instance.locale.languageCode == 'bn';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final s = AppSettings.instance;
+    final level = s.academicLevel;
+    final term = s.academicTerm;
+    if (level == null || term == null || level != 4) return;
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('course_catalog')
+          .where('level', isEqualTo: level)
+          .where('term', isEqualTo: term)
+          .where('isElective', isEqualTo: true)
+          .get();
+      if (!mounted) return;
+      setState(() {
+        _theoryOptions = [
+          for (final d in snap.docs)
+            if (d.data()['type'] == 'Theory')
+              {'id': d.id, 'code': d.data()['code'], 'name': d.data()['name']},
+        ];
+        _sessionalOptions = [
+          for (final d in snap.docs)
+            if (d.data()['type'] == 'Sessional')
+              {'id': d.id, 'code': d.data()['code'], 'name': d.data()['name']},
+        ];
+        // Pre-select previously chosen electives
+        final saved = s.electiveCourseIds;
+        for (final opt in _theoryOptions) {
+          if (saved.contains(opt['id'])) _theory = opt['id'] as String?;
+        }
+        for (final opt in _sessionalOptions) {
+          if (saved.contains(opt['id'])) _sessional = opt['id'] as String?;
+        }
+      });
+    } catch (e) {
+      debugPrint('Failed to load electives: $e');
+    }
+  }
+
+  Future<void> _save() async {
+    final s = AppSettings.instance;
+    final level = s.academicLevel;
+    final term = s.academicTerm;
+    if (level == null || term == null) return;
+    final ids = [
+      if (_theory != null) _theory!,
+      if (_sessional != null && term == 2) _sessional!,
+    ];
+    setState(() => _saving = true);
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .set({'elective_courses': ids}, SetOptions(merge: true));
+      }
+      s.setAcademicInfo(level, term, electiveIds: ids);
+      await widget.onChanged();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content:
+            Text(_isBn ? 'Elective কোর্স আপডেট হয়েছে।' : 'Elective courses updated.'),
+        behavior: SnackBarBehavior.floating,
+      ));
+    } catch (e) {
+      debugPrint('Failed to save electives: $e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppSettings.instance;
+    final level = s.academicLevel;
+    final term = s.academicTerm;
+    // Only Level 4 has elective requirements; other levels show nothing.
+    if (level != 4 || term == null) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppPalette.card(context),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: AppPalette.border(context).withValues(alpha: 0.4),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.tune_rounded, color: AppColors.purple, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                _isBn ? 'Elective কোর্স' : 'Elective Courses',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: AppPalette.textPrimary(context),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_theoryOptions.isEmpty && _sessionalOptions.isEmpty)
+            Text(
+              _isBn ? 'কোনো elective পাওয়া যায়নি।' : 'No electives available.',
+              style: TextStyle(
+                fontSize: 12.5,
+                color: AppPalette.textSecondary(context).withValues(alpha: 0.7),
+              ),
+            )
+          else ...[
+            _dropdown(
+              value: _theory,
+              options: _theoryOptions,
+              hint: _isBn ? 'Theory elective বেছে নিন' : 'Choose theory elective',
+              onChanged: (v) => setState(() => _theory = v),
+            ),
+            if (term == 2) ...[
+              const SizedBox(height: 10),
+              _dropdown(
+                value: _sessional,
+                options: _sessionalOptions,
+                hint: _isBn
+                    ? 'Sessional elective বেছে নিন'
+                    : 'Choose sessional elective',
+                onChanged: (v) => setState(() => _sessional = v),
+              ),
+            ],
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              height: 42,
+              child: ElevatedButton(
+                onPressed: _saving ? null : _save,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.purple,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 0,
+                ),
+                child: _saving
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2.2))
+                    : Text(
+                        AppStrings.save,
+                        style: const TextStyle(
+                            fontSize: 13.5, fontWeight: FontWeight.w800),
+                      ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _dropdown({
+    required String? value,
+    required List<Map<String, dynamic>> options,
+    required String hint,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: AppColors.purple.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.purple.withValues(alpha: 0.25)),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          isExpanded: true,
+          hint: Text(hint,
+              style: TextStyle(
+                  fontSize: 12.5,
+                  color: AppPalette.textSecondary(context))),
+          icon: const Icon(Icons.expand_more_rounded, size: 18),
+          dropdownColor: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF232336)
+              : Colors.white,
+          items: [
+            for (final opt in options)
+              DropdownMenuItem(
+                value: opt['id'] as String,
+                child: Text(
+                  '${opt['code']} — ${opt['name']}',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppPalette.textPrimary(context),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+          onChanged: onChanged,
         ),
       ),
     );
