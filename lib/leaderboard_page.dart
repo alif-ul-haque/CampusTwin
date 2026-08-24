@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:campus_twin/app_settings.dart';
 import 'package:campus_twin/l10n.dart';
 import 'package:campus_twin/theme.dart';
 
 // =============================================================================
 // LEADERBOARD PAGE
 // Three categories: Planner Stars | Habit Score | Screen Time (less = better)
+// All data is fetched from Firestore:
+//   users           -> name / avatar
+//   study_sessions  -> completed sessions -> planner streak (consecutive days)
+//   habit_logs      -> habit_score + screen_time_hours (latest log per user)
 // =============================================================================
 
 enum LeaderboardCategory { planner, habit, screenTime }
@@ -29,27 +36,117 @@ class LeaderboardEntry {
   });
 }
 
-// ── Mock data (replace with Firestore fetch) ──────────────────────────────────
-const _mockUsers = [
-  LeaderboardEntry(id: 'u1', name: 'Abu Salah Md. Jamil', avatar: 'AJ',
-      avatarColor: Color(0xFF4F46E5), plannerStars: 42, habitScore: 88, screenMinutes: 95),
-  LeaderboardEntry(id: 'u2', name: 'Riya Sharma', avatar: 'RS',
-      avatarColor: Color(0xFF0891B2), plannerStars: 38, habitScore: 92, screenMinutes: 72),
-  LeaderboardEntry(id: 'u3', name: 'Tanvir Ahmed', avatar: 'TA',
-      avatarColor: Color(0xFF059669), plannerStars: 55, habitScore: 76, screenMinutes: 140),
-  LeaderboardEntry(id: 'u4', name: 'Mehrin Noor', avatar: 'MN',
-      avatarColor: Color(0xFFD97706), plannerStars: 60, habitScore: 95, screenMinutes: 60),
-  LeaderboardEntry(id: 'u5', name: 'Sabbir Hossain', avatar: 'SH',
-      avatarColor: Color(0xFFDC2626), plannerStars: 30, habitScore: 65, screenMinutes: 200),
-  LeaderboardEntry(id: 'u6', name: 'Priya Das', avatar: 'PD',
-      avatarColor: Color(0xFF7C3AED), plannerStars: 48, habitScore: 80, screenMinutes: 110),
-  LeaderboardEntry(id: 'u7', name: 'Karim Uddin', avatar: 'KU',
-      avatarColor: Color(0xFF0284C7), plannerStars: 22, habitScore: 55, screenMinutes: 170),
-  LeaderboardEntry(id: 'u8', name: 'Nadia Islam', avatar: 'NI',
-      avatarColor: Color(0xFF16A34A), plannerStars: 50, habitScore: 83, screenMinutes: 85),
+// Ranking uses ONLY real registered users from Firestore — no mock data.
+// When nothing can be loaded (signed out / offline) an empty state is shown.
+
+String get _meId => FirebaseAuth.instance.currentUser?.uid ?? '';
+
+// =============================================================================
+// FIRESTORE LOADER
+// =============================================================================
+
+final _avatarPalette = [
+  const Color(0xFF4F46E5), const Color(0xFF0891B2), const Color(0xFF059669),
+  const Color(0xFFD97706), const Color(0xFFDC2626), const Color(0xFF7C3AED),
+  const Color(0xFF0284C7), const Color(0xFF16A34A),
 ];
 
-const String _meId = 'u1';
+String _initials(String name) {
+  final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
+  if (parts.isEmpty) return '?';
+  if (parts.length == 1) return parts.first[0].toUpperCase();
+  return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+}
+
+/// Current planner streak for [userId]: number of consecutive days ending at
+/// the most recent day that has at least one completed study session.
+int _plannerStreak(Set<String> completedDayKeys) {
+  if (completedDayKeys.isEmpty) return 0;
+  final now = DateTime.now();
+  var day = DateTime(now.year, now.month, now.day);
+  String key(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  // Streak may end today or yesterday (today's tasks may not be done yet)
+  if (!completedDayKeys.contains(key(day))) {
+    day = day.subtract(const Duration(days: 1));
+    if (!completedDayKeys.contains(key(day))) return 0;
+  }
+  var streak = 0;
+  while (completedDayKeys.contains(key(day))) {
+    streak++;
+    day = day.subtract(const Duration(days: 1));
+  }
+  return streak;
+}
+
+Future<List<LeaderboardEntry>> loadLeaderboardFromDb() async {
+  final db = FirebaseFirestore.instance;
+  try {
+    // 1. All registered users
+    final usersSnap = await db.collection('users').limit(200).get();
+    
+
+    // 2. Completed study sessions per user -> planner streak
+    final sessionsSnap = await db
+        .collection('study_sessions')
+        .where('completed', isEqualTo: true)
+        .get();
+    final completedDaysByUser = <String, Set<String>>{};
+    for (final doc in sessionsSnap.docs) {
+      final uid = doc.data()['user_id'] as String?;
+      final date = (doc.data()['session_date'] as Timestamp?)?.toDate();
+      if (uid == null || date == null) continue;
+      final d = DateTime(date.year, date.month, date.day);
+      completedDaysByUser.putIfAbsent(uid, () => {}).add(
+            '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}',
+          );
+    }
+
+    // 3. Latest habit log per user -> habit score & screen time
+    final logsSnap = await db
+        .collection('habit_logs')
+        .orderBy('log_date', descending: true)
+        .limit(500)
+        .get();
+    final latestHabitByUser = <String, Map<String, dynamic>>{};
+    for (final doc in logsSnap.docs) {
+      final uid = doc.data()['user_id'] as String?;
+      if (uid == null || latestHabitByUser.containsKey(uid)) continue;
+      latestHabitByUser[uid] = doc.data();
+    }
+
+    final entries = <LeaderboardEntry>[];
+    for (final doc in usersSnap.docs) {
+      final uid = doc.id;
+      final name =
+          (doc.data()['full_name'] as String?)?.trim() ?? '';
+      if (name.isEmpty) continue;
+
+      final streak = _plannerStreak(completedDaysByUser[uid] ?? {});
+      final habit = latestHabitByUser[uid];
+      final habitScore =
+          (habit?['habit_score'] as num?)?.toInt() ?? 0;
+      final screenMinutes = (((habit?['screen_time_hours'] as num?)
+                      ?.toDouble() ??
+                  0) *
+              60)
+          .round();
+
+      entries.add(LeaderboardEntry(
+        id: uid,
+        name: name,
+        avatar: _initials(name),
+        avatarColor: _avatarPalette[uid.hashCode.abs() % _avatarPalette.length],
+        plannerStars: streak,
+        habitScore: habitScore,
+        screenMinutes: screenMinutes,
+      ));
+    }
+    return entries;
+  } catch (_) {
+    return const [];
+  }
+}
 
 // =============================================================================
 // PAGE
@@ -65,6 +162,9 @@ class _LeaderboardPageState extends State<LeaderboardPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tab;
   LeaderboardCategory _cat = LeaderboardCategory.planner;
+  bool get _isBn => AppSettings.instance.locale.languageCode == 'bn';
+  Future<List<LeaderboardEntry>> load() => loadLeaderboardFromDb();
+  late Future<List<LeaderboardEntry>> _entriesFuture = load();
 
   @override
   void initState() {
@@ -86,8 +186,8 @@ class _LeaderboardPageState extends State<LeaderboardPage>
     super.dispose();
   }
 
-  List<LeaderboardEntry> _sorted() {
-    final list = List<LeaderboardEntry>.from(_mockUsers);
+  List<LeaderboardEntry> _sorted(List<LeaderboardEntry> users) {
+    final list = List<LeaderboardEntry>.from(users);
     switch (_cat) {
       case LeaderboardCategory.planner:
         list.sort((a, b) => b.plannerStars.compareTo(a.plannerStars));
@@ -101,9 +201,6 @@ class _LeaderboardPageState extends State<LeaderboardPage>
 
   @override
   Widget build(BuildContext context) {
-    final sorted = _sorted();
-    final myRank = sorted.indexWhere((e) => e.id == _meId) + 1;
-
     return Scaffold(
       backgroundColor: AppPalette.background(context),
       appBar: AppBar(
@@ -127,17 +224,67 @@ class _LeaderboardPageState extends State<LeaderboardPage>
       ),
       body: SafeArea(
         bottom: false,
-        child: Column(
-          children: [
-            // ── White header + podium
-            _buildHeader(myRank, sorted),
-            // ── Tab bar
-            _buildTabBar(context),
-            // ── Scrollable list
-            Expanded(
-              child: _buildList(sorted),
-            ),
-          ],
+        child: FutureBuilder<List<LeaderboardEntry>>(
+          future: _entriesFuture,
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final users = snapshot.data!;
+            if (users.isEmpty) {
+              return RefreshIndicator(
+                color: AppColors.purple,
+                onRefresh: () async {
+                  final future = load();
+                  setState(() => _entriesFuture = future);
+                  await future;
+                },
+                child: ListView(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(48),
+                      child: Column(
+                        children: [
+                          Icon(Icons.emoji_events_outlined,
+                              size: 44,
+                              color: AppPalette.textSecondary(context)
+                                  .withValues(alpha: 0.5)),
+                          const SizedBox(height: 12),
+                          Text(
+                            _isBn
+                                ? 'এখনো কোনো ব্যবহারকারী র‍্যাংকড নয়।'
+                                : 'No ranked users yet.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: AppPalette.textSecondary(context),
+                              fontSize: 13.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+            final sorted = _sorted(users);
+            final myRank = sorted.indexWhere((e) => e.id == _meId) + 1;
+            return RefreshIndicator(
+              color: AppColors.purple,
+              onRefresh: () async {
+                final future = loadLeaderboardFromDb();
+                setState(() => _entriesFuture = future);
+                await future;
+              },
+              child: Column(
+                children: [
+                  _buildHeader(myRank, sorted),
+                  _buildTabBar(context),
+                  Expanded(child: _buildList(sorted)),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );

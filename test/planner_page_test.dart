@@ -1,3 +1,4 @@
+import 'package:campus_twin/app_settings.dart';
 import 'package:campus_twin/planner_page.dart';
 import 'package:campus_twin/theme.dart';
 import 'package:flutter/material.dart';
@@ -58,6 +59,7 @@ void main() {
   testWidgets('planner loads its primary actions and weekly overview', (
     tester,
   ) async {
+    AppSettings.instance.setAcademicInfo(4, 2);
     await tester.binding.setSurfaceSize(const Size(320, 700));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -102,6 +104,7 @@ void main() {
   });
 
   testWidgets('task editor course field fits a narrow phone', (tester) async {
+    AppSettings.instance.setAcademicInfo(4, 2);
     await tester.binding.setSurfaceSize(const Size(320, 700));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -161,6 +164,16 @@ class _TestPlannerRepository implements PlannerRepository {
 
   @override
   Future<List<StudyBlock>> generateWeek(DateTime weekStart) async => [task];
+
+  @override
+  Stream<List<StudyBlock>> streamDay(DateTime day) async* {
+    yield _sameDay(day) ? [task] : [];
+  }
+
+  bool _sameDay(DateTime day) =>
+      day.year == task.date.year &&
+      day.month == task.date.month &&
+      day.day == task.date.day;
 
   @override
   Future<StudyBlock> setCompleted(String id, bool completed) async =>

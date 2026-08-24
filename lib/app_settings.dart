@@ -166,11 +166,41 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<AppNotification> _notifications = _mockNotifications();
+  List<AppNotification> _notifications = [];
+
   List<AppNotification> get notifications => _notifications;
 
   int get unreadCount =>
       _notificationsEnabled ? _notifications.where((n) => !n.read).length : 0;
+
+  /// Adds a real app event to the notification centre (planner reminders,
+  /// new tasks, habit milestones...). Newest first.
+  void pushNotification(
+    String title,
+    String body, {
+    IconData icon = Icons.notifications_active_rounded,
+    Color color = const Color(0xFF4F46E5),
+    bool critical = false,
+  }) {
+    final now = DateTime.now();
+    _notifications.insert(
+      0,
+      AppNotification(
+        id: '${now.millisecondsSinceEpoch}-$_notificationSeq',
+        title: critical ? '🚨 $title' : title,
+        body: body,
+        time: _isBnLocale ? 'এইমাত্র' : 'Just now',
+        icon: icon,
+        color: color,
+      ),
+    );
+    _notificationSeq++;
+    notifyListeners();
+  }
+
+  static int _notificationSeq = 0;
+  static bool get _isBnLocale =>
+      instance.locale.languageCode == 'bn';
 
   void markAllRead() {
     _notifications = _notifications.map((n) => n.copyWith(read: true)).toList();
@@ -254,43 +284,6 @@ class AppSettings extends ChangeNotifier {
     _avatarPresetIndex = index;
     _avatarBytes = null;
     notifyListeners();
-  }
-
-  static List<AppNotification> _mockNotifications() {
-    return [
-      AppNotification(
-        id: 'n1',
-        title: 'New deadline added',
-        body: 'ML Assignment 02 is due tomorrow at 11:59 PM.',
-        time: '2h ago',
-        icon: Icons.event_note_rounded,
-        color: const Color(0xFFDC2626),
-      ),
-      AppNotification(
-        id: 'n2',
-        title: 'Habit streak milestone',
-        body: 'You kept a 5-day streak this week. Keep going!',
-        time: '5h ago',
-        icon: Icons.local_fire_department_rounded,
-        color: const Color(0xFFF59E0B),
-      ),
-      AppNotification(
-        id: 'n3',
-        title: 'Budget reminder',
-        body: 'You have ৳2400 left for the rest of the month.',
-        time: '1d ago',
-        icon: Icons.account_balance_wallet_rounded,
-        color: const Color(0xFF10B981),
-      ),
-      AppNotification(
-        id: 'n4',
-        title: 'Planner update',
-        body: 'Your study plan for this week has 12 study blocks.',
-        time: '2d ago',
-        icon: Icons.edit_calendar_rounded,
-        color: const Color(0xFF4F46E5),
-      ),
-    ];
   }
 }
 

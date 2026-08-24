@@ -81,9 +81,11 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
       builder: (_) => _PhotoSourceSheet(),
     );
     if (result == null || !mounted) return;
-    if (result == _PhotoChoice.gallery) {
+    if (result == _PhotoChoice.gallery || result == _PhotoChoice.camera) {
       final file = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
+        source: result == _PhotoChoice.camera
+            ? ImageSource.camera
+            : ImageSource.gallery,
         maxWidth: 800,
         maxHeight: 800,
         imageQuality: 85,
@@ -281,7 +283,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   }
 }
 
-enum _PhotoChoice { gallery, preset }
+enum _PhotoChoice { camera, gallery, preset }
 
 class _PhotoSourceSheet extends StatelessWidget {
   @override
@@ -307,6 +309,13 @@ class _PhotoSourceSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
+          _option(
+            context,
+            icon: Icons.photo_camera_outlined,
+            title: AppStrings.takePhoto,
+            onTap: () => Navigator.of(context).pop(_PhotoChoice.camera),
+          ),
+          const SizedBox(height: 12),
           _option(
             context,
             icon: Icons.photo_library_outlined,

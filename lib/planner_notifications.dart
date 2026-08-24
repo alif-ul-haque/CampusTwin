@@ -1,7 +1,10 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
+
+import 'app_settings.dart';
 
 // ============================================================
 // PlannerNotificationService
@@ -21,7 +24,7 @@ class PlannerNotificationService {
     // Set up correct local timezone for scheduling
     tz_data.initializeTimeZones();
     final timeZoneName = await FlutterTimezone.getLocalTimezone();
-    tz.setLocalLocation(tz.getLocation(timeZoneName));
+    tz.setLocalLocation(tz.getLocation(timeZoneName.identifier));
 
     const androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -39,22 +42,29 @@ class PlannerNotificationService {
     );
 
     // Request Android 13+ notification permission
-    await _plugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >()
-        ?.requestNotificationsPermission();
+    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+      AndroidFlutterLocalNotificationsPlugin
+    >();
+    await androidPlugin?.requestNotificationsPermission();
+    // Request the Android 12+ "Alarms & reminders" permission so reminders
+    // fire exactly on time even in Doze mode
+    if (await androidPlugin?.canScheduleExactNotifications() == false) {
+      await androidPlugin?.requestExactAlarmsPermission();
+    }
 
     _initialized = true;
   }
 
   // ---- Cancel all notifications for a task ----
   Future<void> cancelTaskNotifications(String taskId) async {
-    // Each task uses a range of notification IDs derived from its hash
-    final base = taskId.hashCode.abs() % 90000000;
-    for (int i = 0; i < 30; i++) {
-      await _plugin.cancel(base + i);
-    }
+    // Never let a failed cancel (e.g. plugin unavailable in tests) break
+    // the surrounding task-delete flow.
+    try {
+      final base = taskId.hashCode.abs() % 90000000;
+      for (int i = 0; i < 30; i++) {
+        await _plugin.cancel(base + i);
+      }
+    } catch (_) {}
   }
 
   // ---- Schedule all notifications for a task ----
@@ -65,6 +75,7 @@ class PlannerNotificationService {
     required DateTime taskDate,
     required int startMinute, // minutes from midnight
     required int endMinute,
+    bool mirrorInApp = false, // also show reminders in the in-app centre
   }) async {
     await init();
     await cancelTaskNotifications(taskId);
@@ -86,8 +97,6 @@ class PlannerNotificationService {
       endMinute ~/ 60,
       endMinute % 60,
     );
-    final now = DateTime.now();
-
     Future<void> scheduleAt(
       DateTime when,
       String title,
@@ -128,16 +137,46 @@ class PlannerNotificationService {
       }
 
       final tzWhen = tz.TZDateTime.from(when, tz.local);
+
+      // On Android 12+ exact alarms need the user to grant the
+      // "Alarms & reminders" permission. If it's missing, exactAllowWhileIdle
+      // throws and silently kills every reminder — fall back to inexact.
+      final canUseExact = await _plugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >()
+          ?.canScheduleExactNotifications();
+
       await _plugin.zonedSchedule(
         base + notifIndex++,
         title,
         body,
         tzWhen,
         details,
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        androidScheduleMode: (canUseExact ?? true)
+            ? AndroidScheduleMode.exactAllowWhileIdle
+            : AndroidScheduleMode.inexactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
       );
+
+      // Mirror the reminder into the in-app notification centre so the
+      // same alerts are visible inside the app.
+      if (mirrorInApp) {
+        final hh = when.hour.toString().padLeft(2, '0');
+        final mm = when.minute.toString().padLeft(2, '0');
+        AppSettings.instance.pushNotification(
+          title,
+          '$body  (${_relativeLabel(when)}) · $hh:$mm',
+          icon: critical
+              ? Icons.notification_important_rounded
+              : Icons.edit_calendar_rounded,
+          color: critical
+              ? const Color(0xFFDC2626)
+              : const Color(0xFF4F46E5),
+          critical: critical,
+        );
+      }
     }
 
     if (taskType == 'assignment') {
@@ -157,14 +196,12 @@ class PlannerNotificationService {
         '"$taskTitle" due in 3 hours!',
       );
       // Every 1 hour until the last hour
-      for (int h = 2; h > 1; h--) {
-        await scheduleAt(
-          deadline.subtract(Duration(hours: h)),
-          '⚠️ Assignment Reminder',
-          '"$taskTitle" due in $h hour${h > 1 ? 's' : ''}!',
-        );
-      }
-      // Last hour: every 30 minutes — critical alerts
+      await scheduleAt(
+        deadline.subtract(const Duration(hours: 2)),
+        '⚠️ Assignment Reminder',
+        '"$taskTitle" due in 2 hours!',
+      );
+      // Last hour: every 30 minutes until deadline passes — critical alerts
       await scheduleAt(
         deadline.subtract(const Duration(minutes: 60)),
         '🚨 DEADLINE IN 1 HOUR',
@@ -175,12 +212,6 @@ class PlannerNotificationService {
         deadline.subtract(const Duration(minutes: 30)),
         '🚨 DEADLINE IN 30 MINUTES',
         '"$taskTitle" deadline is in 30 minutes!',
-        critical: true,
-      );
-      await scheduleAt(
-        deadline.subtract(const Duration(minutes: 10)),
-        '🚨 DEADLINE IN 10 MINUTES',
-        '"$taskTitle" — 10 minutes left!',
         critical: true,
       );
       await scheduleAt(
@@ -220,5 +251,13 @@ class PlannerNotificationService {
       default:
         return 'Task';
     }
+  }
+
+  /// "in 3h" / "in 2d" style label for the in-app mirror.
+  static String _relativeLabel(DateTime when) {
+    final diff = when.difference(DateTime.now());
+    if (diff.inDays >= 1) return 'in ${diff.inDays}d';
+    if (diff.inHours >= 1) return 'in ${diff.inHours}h';
+    return 'in ${diff.inMinutes.clamp(1, 59)}m';
   }
 }

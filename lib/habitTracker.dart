@@ -483,6 +483,38 @@ Respond with ONLY the JSON array.
     return streak;
   }
 
+  /// Fires an in-app notification when any habit streak reaches a
+  /// 5-day (then every +5) milestone. Deduped per habit/milestone/day so
+  /// repeated [loadFromDb] calls don't spam.
+  static void _notifyStreakMilestones(Map<HabitType, int> streaks) {
+    final now = DateTime.now();
+    final dayKey = '${now.year}-${now.month}-${now.day}';
+    for (final entry in streaks.entries) {
+      final streak = entry.value;
+      if (streak < 5 || streak % 5 != 0) continue;
+      final key = "${entry.key.name}-$streak-$dayKey";
+      if (_notifiedStreakKeys.contains(key)) continue;
+      _notifiedStreakKeys.add(key);
+      AppSettings.instance.pushNotification(
+        'Habit Streak Milestone',
+        _streakTitle(entry.key) +
+            ' — $streak day${streak > 1 ? 's' : ''} in a row. Keep going!',
+        icon: Icons.local_fire_department_rounded,
+        color: const Color(0xFFF59E0B),
+      );
+    }
+  }
+
+  static final Set<String> _notifiedStreakKeys = {};
+
+  static String _streakTitle(HabitType type) => switch (type) {
+        HabitType.sleep => 'Sleep',
+        HabitType.water => 'Water intake',
+        HabitType.exercise => 'Exercise',
+        HabitType.screenTime => 'Screen time control',
+        HabitType.score => 'Habits',
+      };
+
   /// Loads last 30 days from Firestore, computes streaks per habit,
   /// week values for current Mon–Sun, habit score, and real screen time.
   static Future<void> loadFromDb() async {
@@ -542,7 +574,7 @@ Respond with ONLY the JSON array.
           };
         }
 
-        // Track which week slots have real data (day-level + per metric)
+              // Track which week slots have real data (day-level + per metric)
         weekHasData = weekLogs.map((log) => log != null).toList();
         for (final t in [
           HabitType.sleep,
@@ -585,6 +617,7 @@ Respond with ONLY the JSON array.
         }).toList();
 
         habitScore = _computeHabitScore();
+        _notifyStreakMilestones(streaks);
       } else {
         // No DB data yet (new user) — zero everything, auto-fill screen time only
         weekHasData = List.filled(7, false);

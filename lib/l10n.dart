@@ -40,6 +40,7 @@ class AppStrings {
   static String get changePhoto => _t('Change Photo', 'ছবি পরিবর্তন');
   static String get chooseFromGallery =>
       _t('Choose from Gallery', 'গ্যালারি থেকে বেছে নিন');
+  static String get takePhoto => _t('Take a Photo', 'ছবি তুলুন');
   static String get choosePreset =>
       _t('Choose a preset avatar', 'প্রিসেট অ্যাভাটার বেছে নিন');
   static String get save => _t('Save', 'সংরক্ষণ');
@@ -89,6 +90,7 @@ class AppStrings {
   static String get stressMedium => _t('Medium', 'মাঝারি');
   static String get stressHigh => _t('High', 'উচ্চ');
   static String get todaySchedule => _t('Today\'s Schedule', 'আজকের রুটিন');
+  static String get noUpcomingTasks => _t('Nothing scheduled ahead.', 'সামনে কিছু শিডিউল করা নেই।');
   static String get upcomingDeadlines =>
       _t('Upcoming Deadlines', 'আসন্ন ডেডলাইন');
   static String get ranking => _t('Ranking', 'র‍্যাংকিং');

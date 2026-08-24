@@ -452,6 +452,14 @@ class MockPlannerRepository implements PlannerRepository {
   }
 
   @override
+  Stream<List<StudyBlock>> streamDay(DateTime day) async* {
+    yield _tasks
+        .where((task) => _sameDate(task.date, _dateOnly(day)))
+        .toList()
+      ..sort(_sortTasks);
+  }
+
+  @override
   Future<StudyBlock> setCompleted(String id, bool completed) async {
     await _latency();
     final index = _tasks.indexWhere((task) => task.id == id);
@@ -614,8 +622,17 @@ class FirestorePlannerRepository implements PlannerRepository {
       Map<String, Course> courses) {
     final sessionDate = (data['session_date'] as Timestamp?)?.toDate();
     final day = sessionDate == null ? _dateOnly(DateTime.now()) : _dateOnly(sessionDate);
-    final startMinute = _asInt(data['start_minute']) ?? 9 * 60;
-    final endMinute = _asInt(data['end_minute']) ?? startMinute + 60;
+    // Prefer minute-of-day helpers, fall back to ER "HH:mm" strings
+    final startMinute = _asInt(data['start_minute']) ??
+        ((data['start_time'] is String)
+            ? _tryParseClock(data['start_time'] as String)
+            : null) ??
+        9 * 60;
+    final endMinute = _asInt(data['end_minute']) ??
+        ((data['end_time'] is String)
+            ? _tryParseClock(data['end_time'] as String)
+            : null) ??
+        startMinute + 60;
     final courseId = _optionalString(data['course_id']);
     final course = courseId == null ? null : courses[courseId];
     return StudyBlock(
@@ -774,6 +791,9 @@ class FirestorePlannerRepository implements PlannerRepository {
       'duration_minutes': draft.endMinute - draft.startMinute,
       'priority': _priorityFor(draft.type),
       'completed': false,
+      // ER schema times ("HH:mm") alongside minute-of-day helpers
+      'start_time': _apiTime(draft.startMinute),
+      'end_time': _apiTime(draft.endMinute),
       // Planner UI extensions (kept beside the ER fields).
       'title': draft.title.trim(),
       'type': draft.type.apiValue,
@@ -918,6 +938,10 @@ class _PlannerPageState extends State<PlannerPage> {
         _error = null;
         _loading = false;
       });
+      // DB-driven reminders: re-sync scheduled notifications from what is
+      // actually stored in study_sessions (covers tasks created on another
+      // device, rebooted phones, or schedules lost while the app was closed).
+      _syncNotificationsFromDb(results[1] as List<StudyBlock>);
     } catch (e, stack) {
       print('❌ Planner _load error: $e');
       print(stack);
@@ -926,6 +950,33 @@ class _PlannerPageState extends State<PlannerPage> {
         _error = AppStrings.couldNotLoad;
         _loading = false;
       });
+    }
+  }
+
+  /// Re-schedules local notifications for every upcoming task currently
+  /// stored in the database. Completed and past tasks are skipped.
+  void _syncNotificationsFromDb(List<StudyBlock> tasks) {
+    final now = DateTime.now();
+    for (final task in tasks) {
+      if (task.completed) continue;
+      final end = DateTime(
+        task.date.year,
+        task.date.month,
+        task.date.day,
+        task.endMinute ~/ 60,
+        task.endMinute % 60,
+      );
+      if (end.isBefore(now)) continue;
+      PlannerNotificationService.instance
+          .scheduleTaskNotifications(
+            taskId: task.id,
+            taskTitle: task.title,
+            taskType: task.type.apiValue,
+            taskDate: task.date,
+            startMinute: task.startMinute,
+            endMinute: task.endMinute,
+          )
+          .catchError((_) {});
     }
   }
 
@@ -1075,6 +1126,10 @@ class _PlannerPageState extends State<PlannerPage> {
     if (!confirmed) return;
     try {
       await _repository.deleteTask(task.id);
+      // Remove any still-scheduled reminders for the deleted task
+      await PlannerNotificationService.instance.cancelTaskNotifications(
+        task.id,
+      );
       if (!mounted) return;
       setState(
         () => _tasks = _tasks.where((item) => item.id != task.id).toList(),
@@ -1906,7 +1961,8 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
           note: _optionalString(_noteController.text),
         ),
       );
-      // Schedule smart notifications for the newly created task
+      // Schedule smart notifications for the newly created task and mirror
+      // every reminder into the in-app notification centre.
       PlannerNotificationService.instance.scheduleTaskNotifications(
         taskId: task.id,
         taskTitle: task.title,
@@ -1914,7 +1970,16 @@ class _TaskEditorSheetState extends State<_TaskEditorSheet> {
         taskDate: task.date,
         startMinute: task.startMinute,
         endMinute: task.endMinute,
+        mirrorInApp: true,
       ).catchError((_) {}); // fire-and-forget, never block the UI
+      AppSettings.instance.pushNotification(
+        AppSettings.instance.locale.languageCode == 'bn'
+            ? 'নতুন কাজ যোগ হয়েছে'
+            : 'New task added',
+        '"${task.title}" — ${_apiTime(task.startMinute)}–${_apiTime(task.endMinute)}',
+        icon: Icons.add_task_rounded,
+        color: const Color(0xFF10B981),
+      );
       if (mounted) Navigator.pop(context, task);
     } on PlannerConflictException catch (error) {
       if (mounted) setState(() => _timeError = error.message);
@@ -2739,6 +2804,15 @@ int _parseClock(String value) {
   return hour * 60 + minute;
 }
 
+/// Like [_parseClock] but returns null instead of throwing on bad input.
+int? _tryParseClock(String value) {
+  try {
+    return _parseClock(value);
+  } on FormatException {
+    return null;
+  }
+}
+
 String _apiDate(DateTime date) =>
     '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
@@ -2947,19 +3021,21 @@ class _LevelTermSetupSheetState extends State<LevelTermSetupSheet> {
                 child: const Icon(Icons.school_rounded, color: Colors.white, size: 24),
               ),
               const SizedBox(width: 14),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Academic Setup',
-                    style: TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.w800,
-                      color: isDark ? Colors.white : const Color(0xFF0F0F23),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Academic Setup',
+                      style: TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.w800,
+                        color: isDark ? Colors.white : const Color(0xFF0F0F23),
+                      ),
                     ),
-                  ),
-                  Text('Select your current Level & Term',
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
-                  ),
-                ],
+                    Text('Select your current Level & Term',
+                      style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

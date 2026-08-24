@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:campus_twin/theme.dart';
 import 'package:campus_twin/planner_page.dart';
 import 'package:campus_twin/habitTracker.dart';
@@ -20,6 +21,22 @@ import 'package:campus_twin/repositories/app_repositories.dart';
 // =============================================================================
 // DATA MODELS
 // =============================================================================
+
+/// "Level 4 · Term 1" == 7th semester (2 semesters per academic year).
+String semesterLabel(int? level, int? term, bool isBn) {
+  if (level == null || term == null) return AppStrings.notSet;
+  final n = (level - 1) * 2 + term;
+  if (n <= 0) return AppStrings.notSet;
+  if (isBn) {
+    const bnOrdinals = ['১ম', '২য়', '৩য়', '৪র্থ', '৫ম', '৬ষ্ঠ', '৭ম', '৮ম'];
+    final word = n <= bnOrdinals.length ? bnOrdinals[n - 1] : '${n}তম';
+    return '$word সেমিস্টার';
+  }
+  const suffixes = ['th', 'st', 'nd', 'rd'];
+  final suffix =
+      (n % 100 >= 11 && n % 100 <= 13) ? 'th' : suffixes[n % 10 > 3 ? 0 : n % 10];
+  return '$n$suffix Semester';
+}
 
 enum StressLevel { low, medium, high }
 
@@ -236,6 +253,7 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage>
     with SingleTickerProviderStateMixin {
   bool _isLoading = true;
+  List<Map<String, String>> _catalogCourses = [];
   late int _selectedTabIndex;
   late final AnimationController _borderAnimController;
 
@@ -258,13 +276,83 @@ class _DashboardPageState extends State<DashboardPage>
 
   Future<void> _loadData() async {
     await _loadProfileFromDb();
-    
+
     // Seed the global course catalog once the user is successfully authenticated
     await CourseSeeder.seedCourses();
-    
+
     _DashboardRepository.loadDashboard();
-    await Future.delayed(const Duration(milliseconds: 300));
+    await _loadWeeklyHoursFromDb();
+    await _loadEnrolledCoursesFromCatalog();
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  /// Loads the user's enrolled courses from the global `course_catalog`
+  /// based on the academic Level & Term selected in the planner setup.
+  Future<void> _loadEnrolledCoursesFromCatalog() async {
+    final s = AppSettings.instance;
+    final level = s.academicLevel;
+    final term = s.academicTerm;
+    if (level == null || term == null) return;
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('course_catalog')
+          .where('level', isEqualTo: level)
+          .where('term', isEqualTo: term)
+          .get();
+      if (!mounted) return;
+      setState(() {
+        _catalogCourses = [
+          for (final doc in snap.docs)
+            {
+              'code': (doc.data()['code'] as String?) ?? '',
+              'name': (doc.data()['name'] as String?) ?? '',
+            },
+        ];
+      });
+    } catch (e) {
+      debugPrint('Failed to load enrolled courses: $e');
+    }
+  }
+
+  /// Builds [AppDashboardRepository.weeklyHours] (Mon-Sun) from completed
+  /// sessions stored in the `study_sessions` collection. Only sessions with
+  /// `completed == true` count towards the weekly analysis.
+  Future<void> _loadWeeklyHoursFromDb() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final weekStart = today.subtract(Duration(days: today.weekday - 1));
+      final weekEnd = weekStart.add(const Duration(days: 7));
+
+      final snapshot = await FirebaseFirestore.instance
+          .collection('study_sessions')
+          .where('user_id', isEqualTo: user.uid)
+          .where('completed', isEqualTo: true)
+          .get();
+
+      // Mon-Sun buckets, minutes of completed study per day
+      final minutes = List.filled(7, 0);
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final date = (data['session_date'] as Timestamp?)?.toDate();
+        if (date == null) continue;
+        final day = DateTime(date.year, date.month, date.day);
+        if (day.isBefore(weekStart) || !day.isBefore(weekEnd)) continue;
+        final weekdayIndex = day.weekday - 1; // Monday = 0
+        minutes[weekdayIndex] += (data['duration_minutes'] as num?)?.toInt() ??
+            ((data['end_minute'] as num?)?.toInt() ?? 0) -
+                ((data['start_minute'] as num?)?.toInt() ?? 0);
+      }
+
+      _DashboardRepository.weeklyHours = [
+        for (final m in minutes) double.parse((m / 60).toStringAsFixed(2)),
+      ];
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('Failed to load weekly hours from DB: $e');
+    }
   }
 
   /// Loads the signed-in user's Firestore profile into [AppSettings] so
@@ -301,6 +389,7 @@ class _DashboardPageState extends State<DashboardPage>
       isScrollControlled: true,
       builder: (_) => _ProfileSheet(
         profile: p,
+        catalogCourses: _catalogCourses,
         onEditProfile: () {
           Navigator.of(context).pop();
           Navigator.of(
@@ -615,7 +704,7 @@ class _DashboardPageState extends State<DashboardPage>
             const SizedBox(height: 22),
             _sectionTitle(AppStrings.upcomingDeadlines),
             const SizedBox(height: 10),
-            _buildDeadlineList(),
+            _buildUpcomingSchedule(),
           ],
         ),
       ),
@@ -1262,6 +1351,315 @@ class _DashboardPageState extends State<DashboardPage>
 
   bool get _isBn => AppSettings.instance.locale.languageCode == 'bn';
 
+  // ── Upcoming schedule (next 14 days, fetched from study_sessions) ──────
+
+  DateTime get _today => _dateOnly(DateTime.now());
+
+  DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  /// Days between today and the task's date (0 = today).
+  int _daysUntil(DateTime date) => _dateOnly(date).difference(_today).inDays;
+
+  Future<List<StudyBlock>> _loadUpcomingTasks() async {
+    final repo = FirestorePlannerRepository();
+    final weekStart = _today.subtract(Duration(days: _today.weekday - 1));
+    final weeks = await Future.wait([
+      repo.fetchWeek(weekStart),
+      repo.fetchWeek(weekStart.add(const Duration(days: 7))),
+    ]);
+    final horizon = _today.add(const Duration(days: 14));
+    final all = [...weeks[0], ...weeks[1]];
+    final upcoming = all
+        .where((b) =>
+            !b.completed &&
+            !_dateOnly(b.date).isBefore(_today) &&
+            _dateOnly(b.date).isBefore(horizon))
+        .toList()
+      ..sort((a, b) {
+        final byDate = _dateOnly(a.date).compareTo(_dateOnly(b.date));
+        if (byDate != 0) return byDate;
+        return a.startMinute.compareTo(b.startMinute);
+      });
+    return upcoming;
+  }
+
+  String _gapLabel(int days) {
+    if (_isBn) {
+      switch (days) {
+        case 0:
+          return 'আজ';
+        case 1:
+          return 'আগামীকাল';
+        default:
+          return '$days দিন পরে';
+      }
+    }
+    switch (days) {
+      case 0:
+        return 'Today';
+      case 1:
+        return 'Tomorrow';
+      default:
+        return 'In $days days';
+    }
+  }
+
+  /// Urgency tier: 0 = soon (normal), 1 = critical (2 days away),
+  /// 2 = normal/faded (3+ days away).
+  int _urgencyTier(int days) {
+    if (days <= 1) return 0;
+    if (days == 2) return 1;
+    return 2;
+  }
+
+  Widget _buildUpcomingSchedule() {
+    return FutureBuilder<List<StudyBlock>>(
+      future: _loadUpcomingTasks(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return _emptyCard(Icons.error_outline, 'Failed to load schedule.');
+        }
+        if (!snapshot.hasData) {
+          return const Padding(
+            padding: EdgeInsets.all(20),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        final items = snapshot.data!;
+        if (items.isEmpty) {
+          return _emptyCard(Icons.event_note_rounded, AppStrings.noUpcomingTasks);
+        }
+
+        // Overview: group tasks by how many days ahead they are.
+        final byGap = <int, List<StudyBlock>>{};
+        for (final task in items) {
+          byGap.putIfAbsent(_daysUntil(task.date), () => []).add(task);
+        }
+        final gaps = byGap.keys.toList()..sort();
+        final futureGaps = gaps.where((g) => g >= 1).toList();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Day-by-day overview chips (tomorrow onwards) ──
+            if (futureGaps.isNotEmpty) ...[
+              SizedBox(
+                height: 34,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: futureGaps.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (context, i) {
+                    final gap = futureGaps[i];
+                    final tier = _urgencyTier(gap);
+                    final color = tier == 1
+                        ? const Color(0xFFDC2626)
+                        : tier == 0
+                            ? const Color(0xFF06B6D4)
+                            : AppPalette.textSecondary(context);
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: tier == 1
+                            ? const Color(0xFFDC2626).withValues(alpha: 0.08)
+                            : color.withValues(alpha: 0.07),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: color.withValues(alpha: 0.35)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            tier == 1 ? Icons.priority_high_rounded : Icons.event_rounded,
+                            size: 13,
+                            color: color,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            '${_gapLabel(gap)} · ${byGap[gap]!.length}',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: color,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            // ── Task cards in ascending order of day & time ──
+            ...items.map((item) {
+              final gap = _daysUntil(item.date);
+              final tier = _urgencyTier(gap);
+
+              // Critical tint for tasks exactly 2 days away; faded for 3+
+              final isCritical = tier == 1;
+              final accent = isCritical
+                  ? const Color(0xFFDC2626)
+                  : gap <= 1
+                      ? const Color(0xFF06B6D4)
+                      : AppColors.purple;
+
+              final startTime = TimeOfDay(
+                hour: item.startMinute ~/ 60,
+                minute: item.startMinute % 60,
+              );
+              final endTime = TimeOfDay(
+                hour: item.endMinute ~/ 60,
+                minute: item.endMinute % 60,
+              );
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _GlowCard(
+                  radius: 14,
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      color: isCritical
+                          ? const Color(0xFFDC2626).withValues(alpha: 0.05)
+                          : null,
+                    ),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 45,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Text(
+                                startTime.format(context),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppPalette.textPrimary(context),
+                                ),
+                              ),
+                              Text(
+                                endTime.format(context),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                  color: AppPalette.textSecondary(context)
+                                      .withValues(alpha: 0.6),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Container(
+                          width: 3,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                accent,
+                                accent.withValues(alpha: 0.4),
+                              ],
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                            ),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      item.title,
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppPalette.textPrimary(context),
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 7, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: accent.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Text(
+                                      _gapLabel(gap),
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                        color: isCritical || gap <= 1
+                                            ? accent
+                                            : AppPalette.textSecondary(context),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Text(
+                                    item.type.label,
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      color: accent.withValues(alpha: 0.8),
+                                    ),
+                                  ),
+                                  if (item.subjectName != null &&
+                                      item.subjectName!.isNotEmpty) ...[
+                                    Text(
+                                      ' · ',
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        color: AppPalette.textSecondary(context)
+                                            .withValues(alpha: 0.5),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Text(
+                                        item.subjectName!,
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          color:
+                                              AppPalette.textSecondary(context)
+                                                  .withValues(alpha: 0.7),
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _handleToggleSchedule(ScheduleItem item) async {
     if (!item.isCompleted) {
       // ── Marking done — simple yes/no confirm (prevents accidental taps) ──
@@ -1322,128 +1720,6 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  Widget _buildDeadlineList() {
-    final items = _DashboardRepository.deadlines;
-    if (items.isEmpty) {
-      return _emptyCard(Icons.event_note_rounded, 'No upcoming deadlines.');
-    }
-    return Column(
-      children: items.map((d) {
-        final urgent = d.isUrgent;
-        final overdue = d.isOverdue;
-        final urgColor = overdue
-            ? const Color(0xFFDC2626)
-            : const Color(0xFFF59E0B);
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: GestureDetector(
-            onTap: () => _showDeadlineDetail(d),
-            child: _GlowCard(
-            radius: 14,
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                color: urgent ? urgColor.withValues(alpha: 0.05) : null,
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: urgent
-                          ? urgColor.withValues(alpha: 0.12)
-                          : AppColors.purple.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      overdue
-                          ? Icons.error_outline_rounded
-                          : urgent
-                          ? Icons.warning_amber_rounded
-                          : Icons.event_note_outlined,
-                      color: urgent ? urgColor : AppColors.purple,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          d.title,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w700,
-                            color: AppPalette.textPrimary(context),
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            Text(
-                              d.course,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: AppPalette.textSecondary(context).withValues(
-                                  alpha: 0.8,
-                                ),
-                              ),
-                            ),
-                            if (d.courseCode != null)
-                              Text(
-                                ' · ${d.courseCode}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppPalette.textSecondary(context).withValues(
-                                    alpha: 0.5,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: urgent
-                          ? urgColor.withValues(alpha: 0.1)
-                          : AppColors.purple.withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      overdue
-                          ? 'Overdue!'
-                          : d.daysLeft == 0
-                          ? AppStrings.today
-                          : '${d.daysLeft}d',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        color: urgent ? urgColor : AppColors.purple,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  // =========================================================================
-  // HABITS TAB
-  // =========================================================================
 
   Widget _buildHabitsTab() {
     return _buildPlaceholderTab(
@@ -1570,9 +1846,9 @@ class _DashboardPageState extends State<DashboardPage>
 // =============================================================================
 
 class _ProfileSheet extends StatelessWidget {
+  bool get _isBn => AppSettings.instance.locale.languageCode == 'bn';
   final UserProfile profile;
-  final VoidCallback onSignOut;
-  final VoidCallback onNavigateToPlanner;
+  final VoidCallback onSignOut;  final VoidCallback onNavigateToPlanner;
   final VoidCallback onNavigateToHabits;
   final VoidCallback onNavigateToDashboard;
   final VoidCallback onNavigateToBudget;
@@ -1580,9 +1856,11 @@ class _ProfileSheet extends StatelessWidget {
   final VoidCallback onNavigateToLeaderboard;
   final VoidCallback onEditProfile;
   final VoidCallback onOpenNotifications;
+  final List<Map<String, String>> catalogCourses;
 
   const _ProfileSheet({
     required this.profile,
+    required this.catalogCourses,
     required this.onSignOut,
     required this.onNavigateToPlanner,
     required this.onNavigateToHabits,
@@ -1647,6 +1925,35 @@ class _ProfileSheet extends StatelessWidget {
                       fontSize: 13,
                     ),
                   ),
+                  // Academic standing computed from Level & Term
+                  // (2 semesters per academic year → L4 T1 == 7th Semester)
+                  Builder(builder: (context) {
+                    final lvl = settings.academicLevel;
+                    final trm = settings.academicTerm;
+                    if (lvl == null || trm == null) {
+                      return const SizedBox.shrink();
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: AppColors.purple.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'Level $lvl · Term $trm  —  '
+                          '${semesterLabel(lvl, trm, _isBn)}',
+                          style: const TextStyle(
+                            color: AppColors.purple,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
                   const SizedBox(height: 14),
                   GestureDetector(
                     onTap: onEditProfile,
@@ -1718,7 +2025,7 @@ class _ProfileSheet extends StatelessWidget {
                   context,
                   Icons.auto_stories_rounded,
                   AppStrings.semester,
-                  '${profile.semester} · ${profile.session}',
+                  semesterLabel(settings.academicLevel, settings.academicTerm, _isBn),
                 ),
                 Divider(height: 20, color: AppPalette.border(context)),
                 // Student ID / Phone are NOT in the database schema yet —
@@ -1773,7 +2080,7 @@ class _ProfileSheet extends StatelessWidget {
                     ),
                     const Spacer(),
                     Text(
-                      '${profile.enrolledCourses.length} ${AppStrings.subjects}',
+                      '${catalogCourses.length} ${AppStrings.subjects}',
                       style: TextStyle(
                         fontSize: 12,
                         color: AppPalette.textSecondary(context).withValues(
@@ -1784,35 +2091,53 @@ class _ProfileSheet extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: profile.enrolledCourses
-                      .map(
-                        (code) => Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.purple.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: AppColors.purple.withValues(alpha: 0.15),
-                            ),
-                          ),
-                          child: Text(
-                            code,
-                            style: const TextStyle(
-                              color: AppColors.purple,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
+                if (catalogCourses.isEmpty)
+                  Text(
+                    settings.academicLevel == null ||
+                            settings.academicTerm == null
+                        ? (_isBn
+                            ? 'Level ও Term সিলেক্ট করলে কোর্স দেখা যাবে।'
+                            : 'Select your Level & Term in the planner to see courses.')
+                        : (_isBn
+                            ? 'এই Level/Term-এ কোনো কোর্স পাওয়া যায়নি।'
+                            : 'No courses found for this Level & Term.'),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: AppPalette.textSecondary(context).withValues(alpha: 0.7),
+                    ),
+                  )
+                else
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: catalogCourses.map((course) {
+                      final code = course['code'] ?? '';
+                      final name = course['name'] ?? '';
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.purple.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: AppColors.purple.withValues(alpha: 0.15),
                           ),
                         ),
-                      )
-                      .toList(),
-                ),
+                        child: Text(
+                          name.isEmpty || name == code
+                              ? code
+                              : '$code · $name',
+                          style: const TextStyle(
+                            color: AppColors.purple,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
                 const SizedBox(height: 10),
                 GestureDetector(
                   onTap: onNavigateToPlanner,
