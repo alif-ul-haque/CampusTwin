@@ -10,6 +10,7 @@ import 'package:campus_twin/l10n.dart';
 import 'package:campus_twin/app_settings.dart';
 import 'package:campus_twin/models/app_models.dart';
 import 'package:campus_twin/repositories/app_repositories.dart';
+import 'package:campus_twin/services/verification_email_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -63,7 +64,7 @@ class _LoginPageState extends State<LoginPage> {
       await user?.reload();
       if (user != null && !user.emailVerified) {
         try {
-          await user.sendEmailVerification();
+          await VerificationEmailService.send();
         } catch (_) {}
         await FirebaseAuth.instance.signOut();
         _showError(AppStrings.emailNotVerified);

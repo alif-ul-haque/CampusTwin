@@ -6,6 +6,7 @@ import 'package:campus_twin/l10n.dart';
 import 'package:campus_twin/app_settings.dart';
 import 'package:campus_twin/models/app_models.dart';
 import 'package:campus_twin/repositories/app_repositories.dart';
+import 'package:campus_twin/services/verification_email_service.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -164,7 +165,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
       // Send the email verification link (free, built into Firebase Auth).
       try {
-        await cred.user!.sendEmailVerification();
+        await VerificationEmailService.send();
       } catch (e) {
         debugPrint('Failed to send verification email: $e');
       }
