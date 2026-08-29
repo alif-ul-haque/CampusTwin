@@ -7,6 +7,7 @@ import 'package:campus_twin/app_settings.dart';
 import 'package:campus_twin/models/app_models.dart';
 import 'package:campus_twin/repositories/app_repositories.dart';
 import 'package:campus_twin/services/verification_email_service.dart';
+import 'package:campus_twin/login.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -180,11 +181,20 @@ class _RegisterPageState extends State<RegisterPage> {
       Navigator.pop(context);
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
+      final isEmailInUse = e.code == 'email-already-in-use';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(AppStrings.authErrorMessage(e.code)),
           backgroundColor: const Color(0xFFDC2626),
           behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: isEmailInUse ? 5 : 4),
+          action: isEmailInUse
+              ? SnackBarAction(
+                  label: AppStrings.signIn,
+                  textColor: Colors.white,
+                  onPressed: _goToLogin,
+                )
+              : null,
         ),
       );
     } catch (e) {
@@ -202,7 +212,12 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 
   void _goToLogin() {
-    Navigator.pop(context);
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LoginPage(initialEmail: _emailController.text.trim()),
+      ),
+    );
   }
 
   @override

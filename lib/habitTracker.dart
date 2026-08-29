@@ -76,7 +76,18 @@ class AIInsight {
   final Color color;
   final String tag;
   final String text;
-  const AIInsight({required this.icon, required this.color, required this.tag, required this.text});
+
+  /// Stable key ('sleep', 'water', 'screen', …) kept so restored insights can
+  /// reproduce the same icon/color instead of always falling back to generic.
+  final String iconKey;
+
+  const AIInsight({
+    required this.icon,
+    required this.color,
+    required this.tag,
+    required this.text,
+    this.iconKey = '',
+  });
 }
 
 // =============================================================================
@@ -186,18 +197,26 @@ class HabitRepository {
   /// When the newest `stress_predictions` doc was saved (null = none yet).
   static DateTime? lastPredictionAt;
 
+  /// Fingerprint of the habit data the latest saved prediction was built from.
+  /// Restored from Firestore so insights auto-refresh whenever the habits
+  /// change — not just on a new day.
+  static String _savedMetricsSnapshot = '';
+
   /// Restores saved insights, then auto-regenerates fresh ones when the
-  /// last prediction is missing or from a previous calendar day — a new day
-  /// (00:00) means new habit data, so insights refresh once per day on the
-  /// first open (or always with [forceFresh]).
+  /// last prediction is missing, from a previous calendar day, or was built
+  /// from different habit data — a new day (00:00) means new habit data, so
+  /// insights refresh once per day on the first open (or always with
+  /// [forceFresh]).
   static Future<void> loadInsights({bool forceFresh = false}) async {
     insights = _staticInsights();
     insightsLoaded = true;
     lastPredictionAt = null;
+    _savedMetricsSnapshot = '';
     await _restoreFromDb();
     final stale = forceFresh ||
         lastPredictionAt == null ||
-        !_sameDay(lastPredictionAt!, DateTime.now());
+        !_sameDay(lastPredictionAt!, DateTime.now()) ||
+        _savedMetricsSnapshot != _metricsSnapshot();
     if (stale) {
       await generateInsightsFromAi();
     }
@@ -206,25 +225,34 @@ class HabitRepository {
   /// Guards against overlapping Gemini calls (auto-open + save + manual tap).
   static bool _generating = false;
 
+  /// Serializable representation of the metrics the AI prompt is built from.
+  static List<Map<String, dynamic>> _metricsData() => [
+        for (final m in metrics)
+          {
+            'title': m.title,
+            'current': m.current,
+            'target': m.target,
+            'unit': m.unit,
+            'lower_is_better': m.lowerIsBetter,
+            'week_values': m.weekValues,
+            'streak': m.streak,
+          },
+      ];
+
+  /// Fingerprint used to decide whether saved insights are still in sync
+  /// with the latest habit data.
+  static String _metricsSnapshot() => jsonEncode(_metricsData());
+
   /// Requests fresh insights from Gemini. Returns true when this call
   /// actually generated (or attempted) new insights, false when it was
   /// skipped because another generation is already in flight.
   static Future<bool> generateInsightsFromAi() async {
     if (_generating) return false;
     _generating = true;
-    final data = metrics
-        .map((m) => {
-              'title': m.title,
-              'current': m.current,
-              'target': m.target,
-              'unit': m.unit,
-              'lower_is_better': m.lowerIsBetter,
-              'week_values': m.weekValues,
-              'streak': m.streak,
-            })
-        .toList();
+    try {
+      final data = _metricsData();
 
-    final prompt = '''
+      final prompt = '''
 You are a wellness coach analyzing a student's weekly habit data (JSON below).
 Return a JSON array of exactly 3 short insights. Each item must have:
 tag (a short 1-2 word category, e.g. "Sleep Pattern"), text (one encouraging
@@ -236,28 +264,31 @@ Habit data: ${jsonEncode(data)}
 Respond with ONLY the JSON array.
 ''';
 
-    final raw = await GeminiService.instance.generateJson(prompt);
-    if (raw != null) {
-      try {
-        final list = jsonDecode(raw) as List;
-        insights = list.map((item) {
-          final map = item as Map<String, dynamic>;
-          final iconKey = map['icon'] as String? ?? 'general';
-          return AIInsight(
-            icon: _iconFor(iconKey),
-            color: _colorFor(iconKey),
-            tag: map['tag'] as String? ?? '',
-            text: map['text'] as String? ?? '',
-          );
-        }).toList();
-        await _savePrediction(insights);
-      } catch (_) {}
+      final raw = await GeminiService.instance.generateJson(prompt);
+      if (raw != null) {
+        try {
+          final list = jsonDecode(raw) as List;
+          insights = list.map((item) {
+            final map = item as Map<String, dynamic>;
+            final iconKey = map['icon'] as String? ?? 'general';
+            return AIInsight(
+              icon: _iconFor(iconKey),
+              color: _colorFor(iconKey),
+              tag: map['tag'] as String? ?? '',
+              text: map['text'] as String? ?? '',
+              iconKey: iconKey,
+            );
+          }).toList();
+          await _savePrediction(insights);
+        } catch (_) {}
+      }
+      if (insights.isEmpty) {
+        insights = _staticInsights();
+      }
+      insightsLoaded = true;
+    } finally {
+      _generating = false;
     }
-    if (insights.isEmpty) {
-      insights = _staticInsights();
-    }
-    insightsLoaded = true;
-    _generating = false;
     return true;
   }
 
@@ -267,18 +298,21 @@ Respond with ONLY the JSON array.
       color: const Color(0xFF6366F1),
       tag: AppStrings.sleepInsightTag,
       text: AppStrings.sleepInsight,
+      iconKey: 'sleep',
     ),
     AIInsight(
       icon: Icons.trending_up_rounded,
       color: const Color(0xFFF59E0B),
       tag: AppStrings.screenInsightTag,
       text: AppStrings.screenInsight,
+      iconKey: 'screen',
     ),
     AIInsight(
       icon: Icons.self_improvement_rounded,
       color: const Color(0xFF10B981),
       tag: AppStrings.stressInsightTag,
       text: AppStrings.stressInsight,
+      iconKey: 'stress',
     ),
   ];
 
@@ -307,6 +341,14 @@ Respond with ONLY the JSON array.
         'score': score,
         'level': _levelFor(score),
         'explanation': result.map((i) => '${i.tag}: ${i.text}').join(' | '),
+        'insights_data': result
+            .map((i) => {
+                  'tag': i.tag,
+                  'text': i.text,
+                  'icon': i.iconKey.isEmpty ? 'general' : i.iconKey,
+                })
+            .toList(),
+        'metrics_snapshot': _metricsSnapshot(),
         'predicted_at': Timestamp.now(),
       });
     } catch (_) {}
@@ -326,25 +368,48 @@ Respond with ONLY the JSON array.
       final data = snap.docs.first.data();
       final predicted = data['predicted_at'] as Timestamp?;
       if (predicted != null) lastPredictionAt = predicted.toDate();
+      _savedMetricsSnapshot = data['metrics_snapshot'] as String? ?? '';
+
+      // Preferred: structured per-insight data (keeps icons/colors faithful).
+      final insightsData = data['insights_data'];
+      if (insightsData is List && insightsData.isNotEmpty) {
+        insights = insightsData.map((item) {
+          final map = item as Map<String, dynamic>;
+          final key = map['icon'] as String? ?? 'general';
+          return AIInsight(
+            icon: _iconFor(key),
+            color: _colorFor(key),
+            tag: map['tag'] as String? ?? '',
+            text: map['text'] as String? ?? '',
+            iconKey: key,
+          );
+        }).toList();
+        return;
+      }
+
+      // Fallback: legacy flat "tag: text | tag: text" explanation string.
       final explanation = data['explanation'] as String?;
       if (explanation == null || explanation.trim().isEmpty) return;
       insights = explanation
           .split(' | ')
           .where((s) => s.trim().isNotEmpty)
           .map((s) {
-            final parts = s.split(': ');
-            if (parts.length == 1) {
+            final sep = s.indexOf(': ');
+            if (sep < 0) {
               return AIInsight(
-                  icon: Icons.auto_awesome_rounded,
-                  color: AppColors.purple,
-                  tag: 'Insight',
-                  text: s);
+                icon: Icons.auto_awesome_rounded,
+                color: AppColors.purple,
+                tag: 'Insight',
+                text: s.trim(),
+                iconKey: 'general',
+              );
             }
             return AIInsight(
               icon: Icons.auto_awesome_rounded,
               color: AppColors.purple,
-              tag: parts.first,
-              text: parts.skip(1).join(': '),
+              tag: s.substring(0, sep).trim(),
+              text: s.substring(sep + 2).trim(),
+              iconKey: 'general',
             );
           })
           .toList();

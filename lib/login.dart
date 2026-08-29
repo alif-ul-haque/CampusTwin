@@ -11,16 +11,22 @@ import 'package:campus_twin/app_settings.dart';
 import 'package:campus_twin/models/app_models.dart';
 import 'package:campus_twin/repositories/app_repositories.dart';
 import 'package:campus_twin/services/verification_email_service.dart';
+import 'package:campus_twin/services/password_reset_email_service.dart';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  /// Pre-fills the email field (e.g. when jumping here from "account already
+  /// exists" on the registration page).
+  final String? initialEmail;
+
+  const LoginPage({super.key, this.initialEmail});
 
   @override
   State<LoginPage> createState() => _LoginPageState();
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final _emailController = TextEditingController();
+  late final TextEditingController _emailController =
+      TextEditingController(text: widget.initialEmail ?? '');
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
@@ -183,12 +189,12 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      await PasswordResetEmailService.send(email);
       _showMessage(AppStrings.resetEmailSent);
     } on FirebaseAuthException catch (e) {
       _showError(AppStrings.authErrorMessage(e.code));
-    } catch (e) {
-      _showError('${AppStrings.authFailed} (${e.toString()})');
+    } catch (_) {
+      _showError(AppStrings.authFailed);
     }
   }
 
@@ -199,13 +205,16 @@ class _LoginPageState extends State<LoginPage> {
     try {
       final googleSignIn = GoogleSignIn();
 
-      GoogleSignInAccount? googleUser;
-      // Always signOut first so the native account picker appears fresh,
-      // letting the user confirm/pick the account from the OS picker.
+      // ১. সাইন-আউটের পর অ্যাকাউন্ট পিকার কল করা
       await googleSignIn.signOut();
-      googleUser = await googleSignIn.signIn();
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
 
-      if (googleUser == null) return; // user cancelled the picker
+      // ব্যবহারকারী যদি পিকার উইন্ডো ক্যানসেল (Cancel) করে ফিরে যান, 
+      // তবে লোডিং স্টেট বন্ধ করতে হবে, তা না হলে স্ক্রিনটি চিরতরে লক (Freeze) হয়ে থাকবে।
+      if (googleUser == null) {
+        if (mounted) setState(() => _isGoogleLoading = false);
+        return; 
+      }
 
       final googleAuth = await googleUser.authentication;
       final credential = GoogleAuthProvider.credential(
@@ -222,11 +231,17 @@ class _LoginPageState extends State<LoginPage> {
         MaterialPageRoute(builder: (_) => const DashboardPage()),
       );
     } catch (e) {
-      _showError('Google sign-in failed: ${e.toString()}');
+      // ২. ব্যবহারকারী নিজে ব্যাক বাটন চেপে ক্যানসেল করলে যেন এরর ডায়ালগ না দেখায়
+      if (e.toString().contains('sign_in_canceled') || e.toString().contains('12501')) {
+        print("Google Sign-in cancelled by user.");
+      } else {
+        _showError('Google sign-in failed: ${e.toString()}');
+      }
     } finally {
       if (mounted) setState(() => _isGoogleLoading = false);
     }
   }
+
 
 
   void _goToRegister() {

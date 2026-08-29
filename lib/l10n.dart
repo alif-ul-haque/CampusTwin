@@ -26,6 +26,22 @@ class AppStrings {
   static String get notifications => _t('Notifications', 'নোটিফিকেশন');
   static String get language => _t('Language', 'ভাষা');
   static String get signOut => _t('Sign Out', 'সাইন আউট');
+  static String get deleteAccount =>
+      _t('Delete Account', 'অ্যাকাউন্ট মুছুন');
+  static String get deleteAccountWarning => _t(
+    'This permanently deletes your account and frees this email for a new registration. This cannot be undone.',
+    'এটি আপনার অ্যাকাউন্ট স্থায়ীভাবে মুছে ফেলবে এবং ইমেইলটি নতুন নিবন্ধনের জন্য ছেড়ে দেবে। এটি ফেরানো যাবে না।',
+  );
+  static String get confirmDeleteAccount =>
+      _t('Delete account?', 'অ্যাকাউন্টটি মুছবেন?');
+  static String get deleteReauthTitle =>
+      _t('Confirm password', 'পাসওয়ার্ড নিশ্চিত করুন');
+  static String get deleteReauthBody => _t(
+    'Enter your password to confirm account deletion.',
+    'অ্যাকাউন্ট মুছতে আপনার পাসওয়ার্ড লিখুন।',
+  );
+  static String get deleteInProgress =>
+      _t('Deleting account…', 'অ্যাকাউন্ট মোছা হচ্ছে…');
   static String get light => _t('Light', 'লাইট');
   static String get dark => _t('Dark', 'ডার্ক');
   static String get system => _t('System', 'সিস্টেম');

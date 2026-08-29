@@ -6,6 +6,7 @@ import 'package:campus_twin/models/app_models.dart';
 import 'package:campus_twin/l10n.dart';
 import 'package:campus_twin/services/gemini_service.dart';
 import 'package:campus_twin/theme.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 // =============================================================================
 // DATA MODEL
@@ -294,13 +295,11 @@ class _AssistantTabState extends State<AssistantTab> {
                                         ]
                                       : null,
                                 ),
-                                child: Text(
-                                  m.text,
-                                  style: TextStyle(
-                                    color: _messageColor(m, context),
-                                    fontSize: 13.5,
-                                    height: 1.35,
-                                  ),
+                                child: MarkdownBody(
+                                  data: m.text,
+                                  selectable: true,
+                                  styleSheet:
+                                      _markdownStyle(context, _messageColor(m, context)),
                                 ),
                               ),
                             ),
@@ -384,6 +383,59 @@ class _AssistantTabState extends State<AssistantTab> {
     if (m.isUser) return Colors.white;
     if (m.text.startsWith('Error:')) return const Color(0xFFDC2626);
     return AppPalette.textPrimary(context);
+  }
+
+  MarkdownStyleSheet _markdownStyle(BuildContext context, Color base) {
+    final isUser = base == Colors.white;
+    final linkColor = isUser ? Colors.white : const Color(0xFF3B82F6);
+    final codeBg = isUser
+        ? Colors.white.withValues(alpha: 0.22)
+        : AppPalette.inputFill(context);
+    final borderColor = isUser
+        ? Colors.white.withValues(alpha: 0.35)
+        : AppPalette.border(context).withValues(alpha: 0.6);
+    final baseStyle = TextStyle(color: base, fontSize: 13.5, height: 1.35);
+
+    return MarkdownStyleSheet(
+      a: baseStyle.copyWith(
+        color: linkColor,
+        decoration: TextDecoration.underline,
+      ),
+      p: baseStyle,
+      strong: baseStyle.copyWith(fontWeight: FontWeight.w700),
+      em: baseStyle.copyWith(fontStyle: FontStyle.italic),
+      del: baseStyle.copyWith(decoration: TextDecoration.lineThrough),
+      code: baseStyle.copyWith(
+        fontSize: 12.5,
+        fontFamily: 'monospace',
+        backgroundColor: codeBg,
+      ),
+      codeblockPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      codeblockDecoration: BoxDecoration(
+        color: codeBg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: borderColor),
+      ),
+      blockquote: baseStyle.copyWith(fontStyle: FontStyle.italic),
+      blockquoteDecoration: BoxDecoration(
+        color: codeBg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: borderColor),
+      ),
+      listBullet: baseStyle,
+      h1: baseStyle.copyWith(fontSize: 16.5, fontWeight: FontWeight.w800),
+      h2: baseStyle.copyWith(fontSize: 15.5, fontWeight: FontWeight.w800),
+      h3: baseStyle.copyWith(fontSize: 14.5, fontWeight: FontWeight.w700),
+      h4: baseStyle.copyWith(fontSize: 14, fontWeight: FontWeight.w700),
+      blockSpacing: 6,
+      listIndent: 16,
+      tableHead: baseStyle.copyWith(fontWeight: FontWeight.w700),
+      tableBody: baseStyle,
+      tableCellsPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      tableCellsDecoration: BoxDecoration(
+        border: Border.all(color: borderColor),
+      ),
+    );
   }
 
   Widget _typingIndicator(BuildContext context) {

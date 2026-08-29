@@ -442,6 +442,127 @@ class _DashboardPageState extends State<DashboardPage>
     ).push(MaterialPageRoute(builder: (_) => const NotificationsPage()));
   }
 
+  /// Permanently deletes the signed-in Firebase Auth account so its email
+  /// becomes available for a fresh registration. Requires a recent sign-in —
+  /// if the sign-in is stale we reauthenticate with the password first.
+  Future<void> _deleteAccount() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(AppStrings.confirmDeleteAccount),
+        content: Text(
+          AppStrings.deleteAccountWarning,
+          style: TextStyle(
+            color: AppPalette.textSecondary(ctx),
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(AppStrings.cancel),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(AppStrings.delete),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await user.delete();
+    } on FirebaseAuthException catch (e) {
+      // Stale sign-in — reauthenticate with the password, then retry.
+      if (e.code != 'requires-recent-login' || user.email == null) {
+        if (mounted) _showDeleteError(e.code);
+        return;
+      }
+      final password = await _promptDeletePassword();
+      if (password == null || !mounted) return;
+      try {
+        await user.reauthenticateWithCredential(
+          EmailAuthProvider.credential(
+            email: user.email!,
+            password: password,
+          ),
+        );
+        await user.delete();
+      } on FirebaseAuthException catch (e2) {
+        if (mounted) _showDeleteError(e2.code);
+        return;
+      }
+    }
+
+    if (!mounted) return;
+    FirebaseAuth.instance.signOut();
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const WelcomePage()),
+      (_) => false,
+    );
+  }
+
+  Future<String?> _promptDeletePassword() {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(AppStrings.deleteReauthTitle),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(AppStrings.deleteReauthBody),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              obscureText: true,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: AppStrings.passwordHint,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(AppStrings.cancel),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(controller.text),
+            child: Text(AppStrings.delete),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteError(String code) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(AppStrings.authErrorMessage(code)),
+        backgroundColor: const Color(0xFFDC2626),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   void _showProfile() {
     final p = AppSettings.instance.profile;
     showModalBottomSheet(
@@ -476,6 +597,7 @@ class _DashboardPageState extends State<DashboardPage>
             (_) => false,
           );
         },
+        onDeleteAccount: _deleteAccount,
         onNavigateToPlanner: () {
           Navigator.of(context).pop();
           setState(() => _selectedTabIndex = 1);
@@ -500,7 +622,9 @@ class _DashboardPageState extends State<DashboardPage>
         },
         onNavigateToLeaderboard: () {
           Navigator.of(context).pop();
-          setState(() => _selectedTabIndex = 4);
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const LeaderboardPage()));
         },
       ),
     );
@@ -1922,6 +2046,7 @@ class _ProfileSheet extends StatelessWidget {
   final VoidCallback onNavigateToLeaderboard;
   final VoidCallback onEditProfile;
   final VoidCallback onOpenNotifications;
+  final VoidCallback onDeleteAccount;
   final List<Map<String, String>> catalogCourses;
   final Future<void> Function() onElectivesChanged;
 
@@ -1938,6 +2063,7 @@ class _ProfileSheet extends StatelessWidget {
     required this.onNavigateToLeaderboard,
     required this.onEditProfile,
     required this.onOpenNotifications,
+    required this.onDeleteAccount,
   });
 
   @override
@@ -2413,6 +2539,22 @@ class _ProfileSheet extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                 ),
               ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          // Delete Account (frees the email for a fresh registration)
+          TextButton.icon(
+            onPressed: onDeleteAccount,
+            icon: const Icon(Icons.delete_forever_outlined, size: 18),
+            label: Text(
+              AppStrings.deleteAccount,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFFDC2626).withValues(alpha: 0.85),
             ),
           ),
           ],
