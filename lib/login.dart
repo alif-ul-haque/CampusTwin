@@ -12,6 +12,7 @@ import 'package:campus_twin/models/app_models.dart';
 import 'package:campus_twin/repositories/app_repositories.dart';
 import 'package:campus_twin/services/verification_email_service.dart';
 import 'package:campus_twin/services/password_reset_email_service.dart';
+import 'package:campus_twin/course_setup_page.dart';
 
 class LoginPage extends StatefulWidget {
   /// Pre-fills the email field (e.g. when jumping here from "account already
@@ -80,6 +81,19 @@ class _LoginPageState extends State<LoginPage> {
       await _ensureUserProfile();
 
       if (!mounted) return;
+
+      // Check if course setup is completed
+      final repo = UserRepository();
+      final appUser = await repo.getById(FirebaseAuth.instance.currentUser!.uid);
+      if (appUser != null && !appUser.courseSetupCompleted) {
+        // New user — go to course setup
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const CourseSetupPage()),
+        );
+        return;
+      }
+
       // Navigate to the Twin Dashboard on success.
       Navigator.pushReplacement(
         context,
@@ -226,6 +240,18 @@ class _LoginPageState extends State<LoginPage> {
       await _ensureUserProfile();
 
       if (!mounted) return;
+
+      // Check if course setup is completed
+      final repo = UserRepository();
+      final appUser = await repo.getById(FirebaseAuth.instance.currentUser!.uid);
+      if (appUser != null && !appUser.courseSetupCompleted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const CourseSetupPage()),
+        );
+        return;
+      }
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const DashboardPage()),

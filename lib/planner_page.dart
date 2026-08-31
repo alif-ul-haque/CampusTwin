@@ -653,47 +653,18 @@ class FirestorePlannerRepository implements PlannerRepository {
   @override
   Future<List<PlannerSubject>> fetchSubjects() async {
     final uid = _requireUid();
-    final s = AppSettings.instance;
-    final level = s.academicLevel;
-    final term = s.academicTerm;
 
-    // Fall back to user-owned 'courses' if no level/term is set yet
-    if (level == null || term == null) {
-      final snapshot = await _db
-          .collection('courses')
-          .where('user_id', isEqualTo: uid)
-          .get();
-      return [
-        for (final doc in snapshot.docs)
-          PlannerSubject(
-            id: doc.id,
-            name: (doc.data()['name'] as String?) ?? '',
-            code: (doc.data()['code'] as String?) ?? '',
-            colorValue: _palette[doc.id.hashCode.abs() % _palette.length],
-            weeklyTargetMinutes: 240,
-          ),
-      ];
-    }
-
-    // Load from global course_catalog filtered by level & term.
-    // Electives are only shown when the user picked them in setup.
+    // Always load from user-owned 'courses' collection
     final snapshot = await _db
-        .collection('course_catalog')
-        .where('level', isEqualTo: level)
-        .where('term', isEqualTo: term)
+        .collection('courses')
+        .where('user_id', isEqualTo: uid)
         .get();
-
-    final allowed = snapshot.docs
-        .where((doc) =>
-            AppSettings.instance.isCourseAllowed(doc.data(), doc.id))
-        .toList();
-
     return [
-      for (final doc in allowed)
+      for (final doc in snapshot.docs)
         PlannerSubject(
           id: doc.id,
-          name: (doc.data()['name'] as String?) ?? '',
-          code: (doc.data()['code'] as String?) ?? '',
+          name: (doc.data()['course_title'] as String?) ?? '',
+          code: (doc.data()['course_code'] as String?) ?? '',
           colorValue: _palette[doc.id.hashCode.abs() % _palette.length],
           weeklyTargetMinutes: 240,
         ),
@@ -907,14 +878,40 @@ class _PlannerPageState extends State<PlannerPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkAcademicSetup());
   }
 
-  /// Shows the level/term setup sheet if the user hasn't set it yet.
-  /// After confirming, saves to Firestore and loads planner data.
+  /// Shows the course setup sheet if the user hasn't added courses yet.
+  /// After confirming, loads planner data.
   Future<void> _checkAcademicSetup() async {
     final s = AppSettings.instance;
-    if (s.academicLevel != null && s.academicTerm != null) {
+    if (s.courseSetupCompleted) {
       // Already configured — load immediately
       _load();
       return;
+    }
+    if (!mounted) return;
+    // Check Firestore directly for fresh login
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      try {
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+        if (userDoc.exists && (userDoc.data()?['course_setup_completed'] == true)) {
+          s.setCourseSetupCompleted(true);
+          _load();
+          return;
+        }
+      } catch (_) {}
+    }
+    // Also check if user has any courses
+    if (uid != null) {
+      final coursesSnap = await FirebaseFirestore.instance
+          .collection('courses')
+          .where('user_id', isEqualTo: uid)
+          .limit(1)
+          .get();
+      if (coursesSnap.docs.isNotEmpty) {
+        s.setCourseSetupCompleted(true);
+        _load();
+        return;
+      }
     }
     if (!mounted) return;
     final confirmed = await showModalBottomSheet<bool>(
@@ -1031,14 +1028,26 @@ class _PlannerPageState extends State<PlannerPage> {
     }
     final index = _tasks.indexWhere((item) => item.id == task.id);
     if (index < 0) return;
+
+    final newCompleted = !task.completed;
+    // Confirm before marking a task complete
+    if (newCompleted) {
+      final confirmed = await _confirmCompleteTask(task);
+      if (confirmed != true) return;
+    } else {
+      // Confirm before undoing a completed task — ask for a reason first
+      final reason = await _confirmUndoTask(task);
+      if (reason == null) return;
+    }
+
     final previous = _tasks[index];
     setState(() {
       final copy = [..._tasks];
-      copy[index] = task.copyWith(completed: !task.completed);
+      copy[index] = task.copyWith(completed: newCompleted);
       _tasks = copy;
     });
     try {
-      await _repository.setCompleted(task.id, !task.completed);
+      await _repository.setCompleted(task.id, newCompleted);
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -1049,6 +1058,123 @@ class _PlannerPageState extends State<PlannerPage> {
       });
       _showMessage(AppStrings.couldNotUpdate);
     }
+  }
+
+  Future<bool?> _confirmCompleteTask(StudyBlock task) async {
+    final isBn = AppSettings.instance.locale.languageCode == 'bn';
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          isBn ? 'কাজ সম্পন্ন করুন' : 'Complete This Task?',
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+        ),
+        content: Text(
+          isBn
+              ? '"${task.title}" টাস্কটি সম্পন্ন হিসেবে চিহ্নিত করবেন?'
+              : 'Are you sure you want to mark "${task.title}" as complete?',
+          style: const TextStyle(fontSize: 15, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            style: TextButton.styleFrom(
+              foregroundColor: AppPalette.textSecondary(context),
+            ),
+            child: Text(
+              isBn ? 'বাতিল' : 'Cancel',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.purple,
+            ),
+            child: Text(
+              isBn ? 'সম্পন্ন করুন' : 'Complete',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool?> _confirmUndoTask(StudyBlock task) async {
+    final isBn = AppSettings.instance.locale.languageCode == 'bn';
+
+    final options = isBn
+        ? <String, String>{
+            'Mistake': 'ভুলবশত সম্পন্ন চিহ্নিত হয়েছিল',
+            'Not Finished': 'আসলে কাজটি শেষ হয়নি',
+            'Adjustment': 'তফসিল/সময় সামঞ্জস্য করতে চাই',
+            'Other': 'অন্য কারণ',
+          }
+        : <String, String>{
+            'Mistake': 'Marked complete by mistake',
+            'Not Finished': 'The task wasn\'t actually finished',
+            'Adjustment': 'Need to adjust schedule / timing',
+            'Other': 'Another reason',
+          };
+
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.undo_rounded, color: AppColors.purple, size: 28),
+            const SizedBox(height: 8),
+            Text(
+              isBn ? 'সম্পন্ন চিহ্ন ফিরিয়ে নাও' : 'Undo Completed Mark?',
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              isBn
+                  ? 'কেন "${task.title}" টাস্কটি আবার অসম্পন্ন করতে চান?'
+                  : 'Why do you want to mark "${task.title}" as incomplete?',
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.4,
+                color: AppPalette.textSecondary(context),
+              ),
+            ),
+            const SizedBox(height: 16),
+            for (final entry in options.entries) ...[
+              _UndoReasonTile(
+                title: entry.key,
+                subtitle: entry.value,
+                onTap: () => Navigator.pop(context, true),
+              ),
+              const SizedBox(height: 8),
+            ],
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => Navigator.pop(context, null),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppPalette.textSecondary(context),
+                ),
+                child: Text(
+                  isBn ? 'বাতিল' : 'Cancel',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _openAddTask() async {
@@ -1809,6 +1935,83 @@ class _PlannerPageState extends State<PlannerPage> {
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _UndoReasonTile extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  const _UndoReasonTile({
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppPalette.card(context),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: AppPalette.border(context).withValues(alpha: 0.5),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppColors.purple.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.replay_rounded,
+                  color: AppColors.purple,
+                  size: 16,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppPalette.textPrimary(context),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppPalette.textSecondary(context),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: AppPalette.textSecondary(context),
+                size: 18,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -19,6 +19,7 @@ class AppStrings {
   static String get goodMorning => _t('Good morning', 'শুভ সকাল');
   static String get goodAfternoon => _t('Good afternoon', 'শুভ অপরাহ্ন');
   static String get goodEvening => _t('Good evening', 'শুভ সন্ধ্যা');
+  static String get goodNight => _t('Good night', 'শুভ রাত্রি');
 
   // ── Settings ───────────────────────────────────────────────────────────
   static String get settings => _t('Settings', 'সেটিংস');
@@ -49,6 +50,28 @@ class AppStrings {
   static String get bengali => _t('Bengali', 'বাংলা');
   static String get on => _t('On', 'চালু');
   static String get off => _t('Off', 'বন্ধ');
+  static String get manageCourses =>
+      _t('Manage Courses', 'কোর্স পরিচালনা');
+  static String get changePassword =>
+      _t('Change Password', 'পাসওয়ার্ড পরিবর্তন');
+  static String get currentPassword =>
+      _t('Current Password', 'বর্তমান পাসওয়ার্ড');
+  static String get newPassword => _t('New Password', 'নতুন পাসওয়ার্ড');
+  static String get confirmPassword =>
+      _t('Confirm New Password', 'নতুন পাসওয়ার্ড নিশ্চিত করুন');
+  static String get passwordChanged =>
+      _t('Password updated successfully', 'পাসওয়ার্ড সফলভাবে আপডেট হয়েছে');
+  static String get passwordsDoNotMatch =>
+      _t('Passwords do not match', 'পাসওয়ার্ড মিলছে না');
+  static String get passwordTooShortText =>
+      _t('Password must be at least 6 characters', 'পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে');
+  static String get outdatedPassword => _t(
+      'Your current password is incorrect', 'আপনার বর্তমান পাসওয়ার্ড সঠিক নয়');
+  static String get enterCurrentPassword =>
+      _t('Enter your current password', 'আপনার বর্তমান পাসওয়ার্ড লিখুন');
+  static String get updatePassword =>
+      _t('Update Password', 'পাসওয়ার্ড আপডেট করুন');
+  static String get sidebarMenu => _t('Menu', 'মেনু');
 
   // ── Profile ────────────────────────────────────────────────────────────
   static String get profile => _t('Profile', 'প্রোফাইল');
@@ -109,7 +132,7 @@ class AppStrings {
   static String get noUpcomingTasks => _t('Nothing scheduled ahead.', 'সামনে কিছু শিডিউল করা নেই।');
   static String get upcomingDeadlines =>
       _t('Upcoming Deadlines', 'আসন্ন ডেডলাইন');
-  static String get ranking => _t('Ranking', 'র‍্যাংকিং');
+  static String get pointsTag => _t('Points', 'পয়েন্ট');
   static String get streak => _t('Streak', 'স্ট্রিক');
   static String get budgetLeft => _t('Budget Left', 'অবশিষ্ট বাজেট');
   static String get days => _t('days', 'দিন');
@@ -686,18 +709,10 @@ class AppStrings {
   // ── Leaderboard page ───────────────────────────────────────────────────
   static String get leaderboardTitle => _t('Leaderboard', 'লিডারবোর্ড');
   static String rankBadge(int rank) => _t('Rank #$rank', 'র‍্যাংক #$rank');
-  static String get plannerTab => _t('⭐  Planner', '⭐  পরিকল্পনা');
-  static String get habitsTab => _t('🔥  Habits', '🔥  অভ্যাস');
-  static String get screenTimeTab => _t('📱  Screen Time', '📱  স্ক্রিন সময়');
   static String get you => _t('You', 'আপনি');
-  static String stars(int count) => _t('$count stars', '$countটি স্টার');
-  static String pts(int count) => _t('$count pts', '$count পয়েন্ট');
-  static String minPerDay(int minutes) =>
-      _t('$minutes min/day', '$minutes মিনিট/দিন');
-  static String streakSummary(int stars, int pts, int mins) => _t(
-    '⭐$stars  🔥$pts pts  📱$mins m',
-    '⭐$stars  🔥$pts পয়েন্ট  📱$mins মিনিট',
-  );
+  static String get points => _t('pts', 'পয়েন্ট');
+  static String get pointsLeaders =>
+      _t('Top campus twin performers this month', 'এই মাসের সেরা পারফরমার');
 
   // ── Welcome page ───────────────────────────────────────────────────────
   static String get heroTitle =>

@@ -43,6 +43,9 @@ class AppUser {
     this.academicLevel,
     this.academicTerm,
     this.electiveCourses = const [],
+    this.courseSetupCompleted = false,
+    this.phone = '',
+    this.studentId = '',
   });
 
   final String id; // == FirebaseAuth uid
@@ -54,7 +57,10 @@ class AppUser {
   final DateTime? createdAt;
   final int? academicLevel; // 1–4
   final int? academicTerm;  // 1 or 2
+  final String phone;
+  final String studentId;
   final List<String> electiveCourses; // chosen elective catalog ids
+  final bool courseSetupCompleted;
 
   factory AppUser.fromMap(String id, Map<String, dynamic> map) => AppUser(
         id: id,
@@ -66,10 +72,13 @@ class AppUser {
         createdAt: _ts(map['created_at']),
         academicLevel: map['academic_level'] as int?,
         academicTerm: map['academic_term'] as int?,
+        phone: map['phone'] as String? ?? '',
+        studentId: map['student_id'] as String? ?? '',
         electiveCourses: (map['elective_courses'] as List?)
                 ?.whereType<String>()
                 .toList() ??
             const [],
+        courseSetupCompleted: _asBool(map['course_setup_completed']),
       );
 
   Map<String, dynamic> toMap() => {
@@ -81,7 +90,10 @@ class AppUser {
         'created_at': createdAt == null ? FieldValue.serverTimestamp() : _tsOrNow(createdAt),
         if (academicLevel != null) 'academic_level': academicLevel,
         if (academicTerm != null) 'academic_term': academicTerm,
+        if (phone.isNotEmpty) 'phone': phone,
+        if (studentId.isNotEmpty) 'student_id': studentId,
         if (electiveCourses.isNotEmpty) 'elective_courses': electiveCourses,
+        'course_setup_completed': courseSetupCompleted,
       };
 }
 
@@ -114,6 +126,7 @@ class Expense {
     required this.amount,
     this.note,
     required this.expenseDate,
+    this.type = 'expense', // 'expense' or 'income'
   });
 
   final String id;
@@ -122,6 +135,7 @@ class Expense {
   final double amount;
   final String? note;
   final DateTime expenseDate;
+  final String type;
 
   factory Expense.fromMap(String id, Map<String, dynamic> map) => Expense(
         id: id,
@@ -130,6 +144,7 @@ class Expense {
         amount: _asDouble(map['amount']),
         note: map['note'] as String?,
         expenseDate: _ts(map['expense_date']) ?? DateTime.now(),
+        type: map['type'] as String? ?? 'expense',
       );
 
   Map<String, dynamic> toMap() => {
@@ -138,6 +153,7 @@ class Expense {
         'amount': amount,
         'note': note,
         'expense_date': Timestamp.fromDate(expenseDate),
+        'type': type,
       };
 }
 

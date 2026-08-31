@@ -26,6 +26,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   late final TextEditingController _phone;
   late final TextEditingController _department;
   late final TextEditingController _semester;
+  late final TextEditingController _studentId;
   bool _saving = false;
   bool _photoChanged = false;
 
@@ -39,6 +40,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     _phone = TextEditingController(text: p.phone);
     _department = TextEditingController(text: p.department);
     _semester = TextEditingController(text: p.semester);
+    _studentId = TextEditingController(text: p.studentId);
     _loadFromDb();
   }
 
@@ -57,6 +59,8 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
       if (appUser.semester > 0) {
         _semester.text = '${appUser.semester}';
       }
+      if (appUser.phone.isNotEmpty) _phone.text = appUser.phone;
+      if (appUser.studentId.isNotEmpty) _studentId.text = appUser.studentId;
       setState(() {});
     } catch (e) {
       debugPrint('Failed to load profile from DB: $e');
@@ -71,6 +75,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     _phone.dispose();
     _department.dispose();
     _semester.dispose();
+    _studentId.dispose();
     super.dispose();
   }
 
@@ -134,16 +139,30 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
       final semesterText = _semester.text.trim().isEmpty
           ? p.semester
           : _semester.text.trim();
+      final phone = _phone.text.trim().isEmpty ? p.phone : _phone.text.trim();
+      final studentId =
+          _studentId.text.trim().isEmpty ? p.studentId : _studentId.text.trim();
 
       // Persist to Firestore (users/{uid}) — silently skips when no
       // authenticated user, keeping the old local-only behaviour.
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
+        final semNum = int.tryParse(
+                semesterText.replaceAll(RegExp(r'[^\d]'), '')) ??
+            1;
+        // Derive Level/Term (2 semesters per academic year):
+        // Semester N → Level = (N-1)~/2 + 1, Term = (N-1)%2 + 1.
+        final derivedLevel = (semNum - 1) ~/ 2 + 1;
+        final derivedTerm = (semNum - 1) % 2 + 1;
         final patch = <String, dynamic>{
           'full_name': name,
           'email': email,
           'department': department,
-          'semester': int.tryParse(semesterText.replaceAll(RegExp(r'[^\d]'), '')) ?? 1,
+          'semester': semNum,
+          'academic_level': derivedLevel,
+          'academic_term': derivedTerm,
+          if (phone.isNotEmpty) 'phone': phone,
+          if (studentId.isNotEmpty) 'student_id': studentId,
         };
         if (_photoChanged) {
           final dataUri = _encodePhoto();
@@ -154,6 +173,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
           AppSettings.instance
               .setPhotoUrl(patch['profile_photo']! as String);
         }
+        AppSettings.instance.setAcademicInfo(derivedLevel, derivedTerm);
       }
 
       // Update the in-memory profile so the whole UI reflects the save.
@@ -163,7 +183,8 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
             ? p.nickname
             : _nickname.text.trim(),
         email: email,
-        phone: _phone.text.trim().isEmpty ? p.phone : _phone.text.trim(),
+        phone: phone,
+        studentId: studentId,
         department: department,
         semester: semesterText,
       );
@@ -248,6 +269,8 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
           _field(AppStrings.department, _department, Icons.school_outlined),
           const SizedBox(height: 14),
           _field(AppStrings.semester, _semester, Icons.auto_stories_outlined),
+          const SizedBox(height: 14),
+          _field(AppStrings.studentId, _studentId, Icons.badge_outlined),
           const SizedBox(height: 28),
           AppPrimaryButton(
             label: AppStrings.save,

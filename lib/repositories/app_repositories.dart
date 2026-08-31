@@ -52,6 +52,12 @@ class ExpenseRepository extends FirestoreRepository<Expense> {
         .get();
     return snap.docs.map((d) => fromMap(d.id, d.data())).toList();
   }
+
+  /// All transaction docs (used by the leaderboard to rank budget health).
+  Future<List<Expense>> fetchAll({int limit = 1000}) async {
+    final snap = await collection.limit(limit).get();
+    return snap.docs.map((d) => fromMap(d.id, d.data())).toList();
+  }
 }
 
 // ── budgets ──────────────────────────────────────────────────────────────

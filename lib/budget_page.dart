@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:campus_twin/theme.dart';
 import 'package:campus_twin/l10n.dart';
+import 'package:campus_twin/repositories/app_repositories.dart' as repos;
 
 // =============================================================================
 // DATA MODELS
@@ -46,7 +49,11 @@ class Transaction {
 enum StatsRange { weekly, monthly, yearly }
 
 // =============================================================================
-// IN-MEMORY REPOSITORY  (no backend / no database — swap for an API later)
+// BUDGET REPOSITORY — Firestore-backed.
+// Transactions are persisted to the `expenses` collection (owner-scoped).
+// Adding a transaction writes it, deleting removes it, and loadFromDb()
+// restores the signed-in user's real transactions on page open. There is no
+// mock/seed data — everything shown is real.
 // =============================================================================
 
 class BudgetRepository {
@@ -100,43 +107,12 @@ class BudgetRepository {
   // ── Transactions ─────────────────────────────────────────────────────
   static final List<Transaction> _transactions = [];
   static int _seq = 0;
-  static bool _seeded = false;
+  // Doc ids already written to Firestore, so remove() can delete them and
+  // loadFromDb() won't duplicate anything.
+  static final Set<String> _persistedIds = {};
 
   static List<Transaction> get transactions =>
       List.unmodifiable(_transactions..sort((a, b) => b.date.compareTo(a.date)));
-
-  static void seed() {
-    if (_seeded) return;
-    _seeded = true;
-    final now = DateTime.now();
-    DateTime d(int daysAgo) => DateTime(now.year, now.month, now.day - daysAgo);
-
-    _addAll([
-      (TxnType.income, 'pocket', 6000.0, d(28), 'Monthly allowance'),
-      (TxnType.income, 'tutoring', 3500.0, d(20), 'Class 9 batch'),
-      (TxnType.income, 'scholarship', 4000.0, d(12), 'Merit stipend'),
-      (TxnType.income, 'freelance', 2200.0, d(4), 'Logo design'),
-      (TxnType.expense, 'hostel', 3500.0, d(27), 'Hostel rent'),
-      (TxnType.expense, 'books', 850.0, d(21), 'Algorithms book'),
-      (TxnType.expense, 'transport', 120.0, d(14), 'Bus fare'),
-      (TxnType.expense, 'mobile', 300.0, d(10), 'Data pack'),
-      (TxnType.expense, 'food', 180.0, d(6), 'Canteen lunch'),
-      (TxnType.expense, 'printing', 90.0, d(5), 'Lab report'),
-      (TxnType.expense, 'food', 220.0, d(3), 'Dinner with friends'),
-      (TxnType.expense, 'fun', 400.0, d(2), 'Movie night'),
-      (TxnType.expense, 'food', 150.0, d(1), 'Breakfast'),
-      (TxnType.expense, 'transport', 60.0, d(0), 'Rickshaw'),
-    ]);
-  }
-
-  static void _addAll(List<(TxnType, String, double, DateTime, String)> rows) {
-    for (final r in rows) {
-      _transactions.add(Transaction(
-        id: 't${_seq++}', type: r.$1, categoryId: r.$2,
-        amount: r.$3, date: r.$4, note: r.$5,
-      ));
-    }
-  }
 
   static void add({
     required TxnType type,
@@ -149,9 +125,72 @@ class BudgetRepository {
       id: 't${_seq++}', type: type, categoryId: categoryId,
       amount: amount, date: date, note: note,
     ));
+    // Persist real (non-seed) entries to Firestore so the leaderboard can
+    // rank budget discipline. Fire-and-forget: the UI already optimistically
+    // reflects the new row.
+    _persistAdd(type, categoryId, amount, date, note).then((id) {
+      if (id != null) _persistedIds.add(id);
+    });
   }
 
-  static void remove(String id) => _transactions.removeWhere((t) => t.id == id);
+  static Future<String?> _persistAdd(TxnType type, String categoryId,
+      double amount, DateTime date, String note) async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return null;
+      final repo = repos.ExpenseRepository();
+      final ref = await repo.collection.add({
+        'user_id': uid,
+        'category_id': categoryId,
+        'amount': amount,
+        'note': note.isEmpty ? null : note,
+        'expense_date': Timestamp.fromDate(date),
+        'type': type == TxnType.income ? 'income' : 'expense',
+      });
+      return ref.id;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static void remove(String id) {
+    _transactions.removeWhere((t) => t.id == id);
+    if (_persistedIds.contains(id)) {
+      _persistedIds.remove(id);
+      _deletePersisted(id);
+    }
+  }
+
+  static void _deletePersisted(String docId) {
+    try {
+      repos.ExpenseRepository()
+          .collection.doc(docId)
+          .delete();
+    } catch (_) {}
+  }
+
+  /// Loads the signed-in user's Firestore transactions back into the local
+  /// list so the page and Leaderboard stay consistent across restarts.
+  static Future<void> loadFromDb() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      final repo = repos.ExpenseRepository();
+      final items = await repo.fetchByUser(uid);
+      for (final e in items) {
+        if (_persistedIds.contains(e.id)) continue;
+        _persistedIds.add(e.id);
+        _transactions.add(Transaction(
+          id: e.id,
+          type: e.type == 'income' ? TxnType.income : TxnType.expense,
+          categoryId: e.categoryId,
+          amount: e.amount,
+          date: e.expenseDate,
+          note: e.note ?? '',
+        ));
+      }
+    } catch (_) {}
+  }
 
   // ── Queries ──────────────────────────────────────────────────────────
   static List<Transaction> onDay(DateTime day) => transactions
@@ -249,10 +288,15 @@ class _BudgetPageState extends State<BudgetPage> {
   @override
   void initState() {
     super.initState();
-    BudgetRepository.seed();
     final now = DateTime.now();
     _visibleMonth = DateTime(now.year, now.month);
     _selectedDay = DateTime(now.year, now.month, now.day);
+    _loadFromDb();
+  }
+
+  Future<void> _loadFromDb() async {
+    await BudgetRepository.loadFromDb();
+    if (mounted) setState(() {});
   }
 
   // ── Actions ──────────────────────────────────────────────────────────

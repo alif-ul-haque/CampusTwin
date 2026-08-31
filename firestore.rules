@@ -1,13 +1,18 @@
 rules_version = '2';
 
 // =============================================================================
-// Ownership model: almost every collection has a `user_id` field that must
-// equal the signed-in user's uid. `assignments` and `study_sessions` are
-// owned indirectly (via course_id / plan_id) — client code must fetch the
-// parent doc to prove ownership before reading/writing children in a
-// production app; for now these two are read-only to any signed-in user
-// and write-restricted to the Cloud Function / admin SDK. Tighten as needed.
-// `achievements` is a read-only public catalog.
+// Ownership model: every collection has a `user_id` field that must equal the
+// signed-in user's uid, and WRITES are owner-only everywhere.
+//
+// The client-side Leaderboard computes a single overall point per user from
+// NON-monetary activity, so it needs cross-user READ access only on:
+//   users, study_sessions, habit_logs, daily_checkins
+// These hold no financial data. SENSITIVE data stays owner-only:
+//   expenses, budgets  (your actual money/amounts are never visible to others)
+// `assignments` and `study_sessions` are owned indirectly (via course_id /
+// plan_id) — client code must fetch the parent doc to prove ownership before
+// reading/writing children in a production app; for now these are read-only
+// to any signed-in user and write-restricted to the Cloud Function / admin SDK.
 // =============================================================================
 
 service cloud.firestore {
@@ -22,8 +27,10 @@ service cloud.firestore {
     }
 
     // users/{uid} — doc id IS the uid
+    // Read is open to any signed-in user so the client-side Leaderboard can
+    // rank everyone (name + identity only). Writes stay owner-only.
     match /users/{userId} {
-      allow read: if isOwner(userId);
+      allow read: if signedIn();
       allow create: if isOwner(userId);
       allow update: if isOwner(userId);
       allow delete: if false; // handle account deletion via a Cloud Function
@@ -76,7 +83,10 @@ service cloud.firestore {
     }
 
     match /habit_logs/{docId} {
-      allow read, update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      // Read open to any signed-in user for the leaderboard habit score
+      // (habit_score is a 0-100 rating — no monetary/financial data).
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
       allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
     }
 
@@ -101,8 +111,17 @@ service cloud.firestore {
     }
 
     match /daily_checkins/{docId} {
-      allow read, create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+      // Read open to any signed-in user for the leaderboard check-in streak.
+      allow read: if signedIn();
       allow update, delete: if signedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.user_id == request.auth.uid;
+    }
+
+    // Unused — the client-side leaderboard computes scores directly and does
+    // NOT read this collection. Kept private (no reads from app users).
+    match /leaderboard_scores/{uid} {
+      allow read: if false;
+      allow write: if false;
     }
 
     match /achievements/{docId} {
