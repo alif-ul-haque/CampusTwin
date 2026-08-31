@@ -11,12 +11,13 @@ import 'package:campus_twin/assistant.dart';
 import 'package:campus_twin/budget_page.dart';
 import 'package:campus_twin/app_blocker_page.dart';
 import 'package:campus_twin/leaderboard_page.dart';
+import 'package:campus_twin/leaderboard_scoring.dart';
 import 'package:campus_twin/app_settings.dart';
-import 'package:campus_twin/seed_courses.dart';
 import 'package:campus_twin/l10n.dart';
 import 'package:campus_twin/notifications_page.dart';
 import 'package:campus_twin/profile_edit_sheet.dart';
 import 'package:campus_twin/repositories/app_repositories.dart';
+import 'package:campus_twin/course_setup_page.dart';
 
 // =============================================================================
 // DATA MODELS
@@ -121,6 +122,11 @@ class _DashboardRepository {
   static double budgetRemaining = 2400;
   static List<ScheduleItem> schedule = [];
   static List<DeadlineItem> deadlines = [];
+
+  // Leaderboard (my own public score/rank from leaderboard_scores)
+  static int myOverallScore = 0;
+  static int myRank = 0;
+  static int rankCount = 0;
 
   // ── Chart data ──────────────────────────────────────────────────────
   static List<double> weeklyHours = []; // Mon-Sun
@@ -253,9 +259,9 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage>
     with SingleTickerProviderStateMixin {
   bool _isLoading = true;
-  List<Map<String, String>> _catalogCourses = [];
   late int _selectedTabIndex;
   late final AnimationController _borderAnimController;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
@@ -277,26 +283,62 @@ class _DashboardPageState extends State<DashboardPage>
   Future<void> _loadData() async {
     await _loadProfileFromDb();
 
-    // Seed the global course catalog once the user is successfully authenticated
-    await CourseSeeder.seedCourses();
-
     _DashboardRepository.loadDashboard();
+    await _loadMyLeaderboard();
     await _loadWeeklyHoursFromDb();
-    await _loadEnrolledCoursesFromCatalog();
-    await _loadSubjectDistributionFromDb();
+    await _loadUserCoursesForSubjectDistribution();
     if (mounted) setState(() => _isLoading = false);
   }
 
-  /// Builds the Subject Distribution chart from completed `study_sessions`:
-  /// total completed study time per course (of the user's Level & Term),
-  /// converted to percentages — top 5 courses, highest first. With no data
-  /// yet every course shows 0%.
-  Future<void> _loadSubjectDistributionFromDb() async {
-    final s = AppSettings.instance;
+  /// Loads my own public leaderboard score/rank from the `leaderboard_scores`
+  /// collection (safe aggregate scores only) and refreshes the dashboard.
+  Future<void> _loadMyLeaderboard() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    final courses = _catalogCourses;
-    if (uid == null || courses.isEmpty) return;
+    if (uid == null) return;
     try {
+      final scores = await loadLeaderboardScores();
+      final me = scores.where((e) => e.id == uid).firstOrNull;
+      if (!mounted) return;
+      setState(() {
+        _DashboardRepository.myOverallScore = me?.overallScore ?? 0;
+        _DashboardRepository.myRank =
+            me == null ? 0 : scores.indexOf(me) + 1;
+        _DashboardRepository.rankCount = scores.length;
+      });
+    } catch (_) {
+      // Leave previous values if the read fails.
+    }
+  }
+
+  /// Builds the Subject Distribution chart from completed `study_sessions`:
+  /// total completed study time per course, converted to percentages —
+  /// top 5 courses, highest first. Uses user-owned courses.
+  Future<void> _loadUserCoursesForSubjectDistribution() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      // Load user's courses
+      final coursesSnap = await FirebaseFirestore.instance
+          .collection('courses')
+          .where('user_id', isEqualTo: uid)
+          .get();
+      final userCourses = <Map<String, String>>[];
+      for (final doc in coursesSnap.docs) {
+        userCourses.add({
+          'id': doc.id,
+          'code': (doc.data()['course_code'] as String?) ?? '',
+          'name': (doc.data()['course_title'] as String?) ?? '',
+        });
+      }
+
+      if (userCourses.isEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _DashboardRepository.subjectDistribution = {};
+        });
+        return;
+      }
+
       // Completed study minutes per course
       final snap = await FirebaseFirestore.instance
           .collection('study_sessions')
@@ -317,16 +359,13 @@ class _DashboardPageState extends State<DashboardPage>
       final totalTime =
           minutesByCourse.values.fold<int>(0, (sum, m) => sum + m);
 
-      // Every Level & Term course gets an entry (0% when no sessions yet),
-      // sorted by completed time descending, top 5.
-      final entries = courses
+      // Every user course gets an entry, sorted by completed time descending, top 5.
+      final entries = userCourses
           .map((c) {
             final minutes = minutesByCourse[c['id']] ?? 0;
-            final label = (c['code']?.isEmpty ?? true)
-                ? (c['name'] ?? '')
-                : ((c['name']?.isEmpty ?? true) || c['name'] == c['code'])
-                    ? c['code']!
-                    : '${c['code']} · ${c['name']}';
+            final code = c['code'] ?? '';
+            final name = c['name'] ?? '';
+            final label = code.isEmpty ? name : (name.isEmpty || name == code) ? code : '$code · $name';
             return MapEntry(
                 label, totalTime > 0 ? minutes / totalTime : 0.0);
           })
@@ -340,38 +379,6 @@ class _DashboardPageState extends State<DashboardPage>
       });
     } catch (e) {
       debugPrint('Failed to load subject distribution: $e');
-    }
-  }
-
-  /// Loads the user's enrolled courses from the global `course_catalog`
-  /// based on the academic Level & Term selected in the planner setup.
-  Future<void> _loadEnrolledCoursesFromCatalog() async {
-    final s = AppSettings.instance;
-    final level = s.academicLevel;
-    final term = s.academicTerm;
-    if (level == null || term == null) return;
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection('course_catalog')
-          .where('level', isEqualTo: level)
-          .where('term', isEqualTo: term)
-          .get();
-      if (!mounted) return;
-      final electives = s.electiveCourseIds;
-      setState(() {
-        _catalogCourses = [
-          for (final doc in snap.docs)
-            if (doc.data()['isElective'] != true ||
-                electives.contains(doc.id))
-              {
-                'id': doc.id,
-                'code': (doc.data()['code'] as String?) ?? '',
-                'name': (doc.data()['name'] as String?) ?? '',
-              },
-        ];
-      });
-    } catch (e) {
-      debugPrint('Failed to load enrolled courses: $e');
     }
   }
 
@@ -443,8 +450,8 @@ class _DashboardPageState extends State<DashboardPage>
   }
 
   /// Permanently deletes the signed-in Firebase Auth account so its email
-  /// becomes available for a fresh registration. Requires a recent sign-in —
-  /// if the sign-in is stale we reauthenticate with the password first.
+  /// becomes available for a fresh registration. Always requires the user to
+  /// re-enter their password first; only deletes when the password matches.
   Future<void> _deleteAccount() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -478,28 +485,39 @@ class _DashboardPageState extends State<DashboardPage>
     );
     if (confirmed != true || !mounted) return;
 
+    // Re-authenticate with the password before deleting so the user must
+    // actually confirm ownership of the account.
+    if (user.email == null) {
+      await _deleteWithConfirmation(user);
+      return;
+    }
+    final password = await _promptDeletePassword();
+    if (password == null || password.trim().isEmpty || !mounted) return;
+
+    try {
+      await user.reauthenticateWithCredential(
+        EmailAuthProvider.credential(
+          email: user.email!,
+          password: password,
+        ),
+      );
+    } on FirebaseAuthException catch (e) {
+      if (mounted) _showDeleteError(e.code);
+      return;
+    }
+
+    await _deleteWithConfirmation(user);
+  }
+
+  /// Deletes the (now re-authenticated) Firebase user and returns to the
+  /// welcome screen. Handles the Google-account case where password
+  /// re-authentication is not possible.
+  Future<void> _deleteWithConfirmation(User user) async {
     try {
       await user.delete();
     } on FirebaseAuthException catch (e) {
-      // Stale sign-in — reauthenticate with the password, then retry.
-      if (e.code != 'requires-recent-login' || user.email == null) {
-        if (mounted) _showDeleteError(e.code);
-        return;
-      }
-      final password = await _promptDeletePassword();
-      if (password == null || !mounted) return;
-      try {
-        await user.reauthenticateWithCredential(
-          EmailAuthProvider.credential(
-            email: user.email!,
-            password: password,
-          ),
-        );
-        await user.delete();
-      } on FirebaseAuthException catch (e2) {
-        if (mounted) _showDeleteError(e2.code);
-        return;
-      }
+      if (mounted) _showDeleteError(e.code);
+      return;
     }
 
     if (!mounted) return;
@@ -563,7 +581,102 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
+  void _closeDrawer() {
+    final state = _scaffoldKey.currentState;
+    if (state != null && state.isDrawerOpen) Navigator.of(context).pop();
+  }
+
+  void _openManageCourses() {
+    _closeDrawer();
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CourseSetupPage(isEditing: true)),
+    ).then((_) {
+      _loadUserCoursesForSubjectDistribution();
+      if (mounted) setState(() {});
+    });
+  }
+
+  void _openLeaderboard() {
+    _closeDrawer();
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const LeaderboardPage()));
+  }
+
+  void _openAppBlocker() {
+    _closeDrawer();
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const AppBlockerPage()));
+  }
+
+  void _showSettings() {
+    _closeDrawer();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _SettingsSheet(
+        onOpenNotifications: () {
+          Navigator.of(context).pop();
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const NotificationsPage()));
+        },
+        onChangePassword: _changePassword,
+        onDeleteAccount: _deleteAccount,
+      ),
+    );
+  }
+
+  Future<void> _signOut() async {
+    _closeDrawer();
+    final isBn = AppSettings.instance.locale.languageCode == 'bn';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          isBn ? 'সাইন আউট করুন?' : 'Sign out?',
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+        ),
+        content: Text(
+          isBn
+              ? 'আপনি কি নিশ্চিতভাবে সাইন আউট করতে চান?'
+              : 'Are you sure you want to sign out of CampusTwin?',
+          style: TextStyle(
+            color: AppPalette.textSecondary(ctx),
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(AppStrings.cancel),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(AppStrings.signOut),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const WelcomePage()),
+      (_) => false,
+    );
+  }
+
   void _showProfile() {
+    _closeDrawer();
     final p = AppSettings.instance.profile;
     showModalBottomSheet(
       context: context,
@@ -571,63 +684,80 @@ class _DashboardPageState extends State<DashboardPage>
       isScrollControlled: true,
       builder: (_) => _ProfileSheet(
         profile: p,
-        catalogCourses: _catalogCourses,
-        onElectivesChanged: () async {
-          await _loadEnrolledCoursesFromCatalog();
-          await _loadSubjectDistributionFromDb();
-          if (mounted) setState(() {});
-        },
         onEditProfile: () {
           Navigator.of(context).pop();
           Navigator.of(
             context,
           ).push(MaterialPageRoute(builder: (_) => const ProfileEditPage()));
         },
-        onOpenNotifications: () {
-          Navigator.of(context).pop();
-          Navigator.of(
-            context,
-          ).push(MaterialPageRoute(builder: (_) => const NotificationsPage()));
-        },
-        onSignOut: () {
-          Navigator.of(context).pop();
-          FirebaseAuth.instance.signOut();
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const WelcomePage()),
-            (_) => false,
-          );
-        },
-        onDeleteAccount: _deleteAccount,
-        onNavigateToPlanner: () {
-          Navigator.of(context).pop();
-          setState(() => _selectedTabIndex = 1);
-        },
-        onNavigateToHabits: () {
-          Navigator.of(context).pop();
-          _openHabitTracker();
-        },
-        onNavigateToDashboard: () {
-          Navigator.of(context).pop();
-          setState(() => _selectedTabIndex = 0);
-        },
-        onNavigateToBudget: () {
-          Navigator.of(context).pop();
-          setState(() => _selectedTabIndex = 3);
-        },
-        onOpenAppBlocker: () {
-          Navigator.of(context).pop();
-          Navigator.of(
-            context,
-          ).push(MaterialPageRoute(builder: (_) => const AppBlockerPage()));
-        },
-        onNavigateToLeaderboard: () {
-          Navigator.of(context).pop();
-          Navigator.of(
-            context,
-          ).push(MaterialPageRoute(builder: (_) => const LeaderboardPage()));
-        },
       ),
     );
+  }
+
+  Future<void> _changePassword() async {
+    final isBn = AppSettings.instance.locale.languageCode == 'bn';
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    if (user.providerData.any((info) => info.providerId == 'google.com')) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          isBn
+              ? 'Google দিয়ে সাইন-ইন করা অ্যাকাউন্টে পাসওয়ার্ড পরিবর্তন করা যায় না।'
+              : 'Password change isn\'t available for Google sign-in accounts.',
+        ),
+        backgroundColor: const Color(0xFFDC2626),
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
+
+    final result = await showDialog<_PasswordResult>(
+      context: context,
+      builder: (_) => const _ChangePasswordSheet(),
+    );
+    if (result == null || !mounted) return;
+
+    try {
+      await user.reauthenticateWithCredential(
+        EmailAuthProvider.credential(
+          email: user.email!,
+          password: result.currentPassword,
+        ),
+      );
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+            e.code == 'wrong-password'
+                ? AppStrings.outdatedPassword
+                : AppStrings.authErrorMessage(e.code),
+          ),
+          backgroundColor: const Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+      return;
+    }
+
+    try {
+      await user.updatePassword(result.newPassword);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(AppStrings.passwordChanged),
+          backgroundColor: const Color(0xFF10B981),
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(AppStrings.authErrorMessage(e.code)),
+          backgroundColor: const Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
   }
 
   // ── Tab items ────────────────────────────────────────────────────────
@@ -771,7 +901,18 @@ class _DashboardPageState extends State<DashboardPage>
 
   Widget _buildScaffold(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
       extendBody: false,
+      drawer: _AppDrawer(
+        onProfile: _showProfile,
+        onManageCourses: _openManageCourses,
+        onLeaderboard: _openLeaderboard,
+        onAppBlocker: _openAppBlocker,
+        onNotifications: _openNotifications,
+        onSettings: _showSettings,
+        onSignOut: _signOut,
+      ),
+      drawerEdgeDragWidth: 0,
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -904,7 +1045,9 @@ class _DashboardPageState extends State<DashboardPage>
   Widget _buildHeader() {
     final now = DateTime.now();
     final hour = now.hour;
-    final greeting = hour < 12
+    final greeting = hour >= 21 || hour < 5
+        ? AppStrings.goodNight
+        : hour < 12
         ? AppStrings.goodMorning
         : hour < 17
         ? AppStrings.goodAfternoon
@@ -916,9 +1059,27 @@ class _DashboardPageState extends State<DashboardPage>
     return _GlowCard(
       radius: 24,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
+        padding: const EdgeInsets.fromLTRB(8, 12, 14, 14),
         child: Row(
           children: [
+            // Hamburger menu — opens the sidebar drawer
+            GestureDetector(
+              onTap: () => _scaffoldKey.currentState?.openDrawer(),
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.purple.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.menu_rounded,
+                  color: AppColors.purple,
+                  size: 22,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1004,71 +1165,13 @@ class _DashboardPageState extends State<DashboardPage>
                 ],
               ),
             ),
-            // Notification bell — top right, opens notification center
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                GestureDetector(
-                  onTap: _openNotifications,
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    margin: const EdgeInsets.only(right: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.purple.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Icon(
-                      Icons.notifications_none_rounded,
-                      color: AppColors.purple,
-                      size: 21,
-                    ),
-                  ),
-                ),
-                if (AppSettings.instance.unreadCount > 0)
-                  Positioned(
-                    right: 4,
-                    top: -2,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 1,
-                      ),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFDC2626),
-                        borderRadius: BorderRadius.all(Radius.circular(999)),
-                      ),
-                      child: Text(
-                        '${AppSettings.instance.unreadCount}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            // Avatar — top right, tap → profile
-            GestureDetector(
-              onTap: _showProfile,
-              child: Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.purple.withValues(alpha: 0.3),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: AppAvatar(size: 48, borderRadius: 16),
-                ),
+            // Avatar — top right (static display, profile via sidebar menu)
+            Container(
+              width: 48,
+              height: 48,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: AppAvatar(size: 48, borderRadius: 16),
               ),
             ),
           ],
@@ -1083,8 +1186,10 @@ class _DashboardPageState extends State<DashboardPage>
         Expanded(
           child: _StatTile(
             icon: Icons.leaderboard_rounded,
-            label: AppStrings.ranking,
-            value: '#1',
+            label: AppStrings.pointsTag,
+            value: _DashboardRepository.myRank > 0
+                ? '${_DashboardRepository.myOverallScore} ${AppStrings.points}'
+                : '#${_DashboardRepository.rankCount}',
             accent: const Color(0xFF6366F1),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const LeaderboardPage()),
@@ -1412,8 +1517,7 @@ class _DashboardPageState extends State<DashboardPage>
           );
         }
         
-        // Only show tasks that are NOT completed yet
-        final items = snapshot.data!.where((b) => !b.completed).toList();
+        final items = snapshot.data!;
         
         if (items.isEmpty) {
           return _emptyCard(Icons.task_alt_rounded, 'All done for today!');
@@ -1427,7 +1531,7 @@ class _DashboardPageState extends State<DashboardPage>
             final startTime = TimeOfDay(hour: item.startMinute ~/ 60, minute: item.startMinute % 60);
             final endTime = TimeOfDay(hour: item.endMinute ~/ 60, minute: item.endMinute % 60);
             
-            return Padding(
+            final card = Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: _GlowCard(
                 radius: 14,
@@ -1439,7 +1543,7 @@ class _DashboardPageState extends State<DashboardPage>
                   child: Row(
                     children: [
                       SizedBox(
-                        width: 45, // slightly wider to accommodate PM/AM comfortably
+                        width: 45,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
@@ -1488,7 +1592,12 @@ class _DashboardPageState extends State<DashboardPage>
                               style: TextStyle(
                                 fontSize: 13.5,
                                 fontWeight: FontWeight.w700,
-                                color: AppPalette.textPrimary(context),
+                                color: item.completed
+                                    ? AppPalette.textPrimary(context).withValues(alpha: 0.6)
+                                    : AppPalette.textPrimary(context),
+                                decoration: item.completed
+                                    ? TextDecoration.lineThrough
+                                    : null,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -1533,6 +1642,17 @@ class _DashboardPageState extends State<DashboardPage>
                 ),
               ),
             );
+
+            if (item.completed) {
+              return ImageFiltered(
+                imageFilter: ImageFilter.blur(sigmaX: 1.4, sigmaY: 1.4),
+                child: Opacity(
+                  opacity: 0.55,
+                  child: card,
+                ),
+              );
+            }
+            return card;
           }).toList(),
         );
       },
@@ -2038,32 +2158,11 @@ class _DashboardPageState extends State<DashboardPage>
 class _ProfileSheet extends StatelessWidget {
   bool get _isBn => AppSettings.instance.locale.languageCode == 'bn';
   final UserProfile profile;
-  final VoidCallback onSignOut;  final VoidCallback onNavigateToPlanner;
-  final VoidCallback onNavigateToHabits;
-  final VoidCallback onNavigateToDashboard;
-  final VoidCallback onNavigateToBudget;
-  final VoidCallback onOpenAppBlocker;
-  final VoidCallback onNavigateToLeaderboard;
   final VoidCallback onEditProfile;
-  final VoidCallback onOpenNotifications;
-  final VoidCallback onDeleteAccount;
-  final List<Map<String, String>> catalogCourses;
-  final Future<void> Function() onElectivesChanged;
 
   const _ProfileSheet({
     required this.profile,
-    required this.catalogCourses,
-    required this.onElectivesChanged,
-    required this.onSignOut,
-    required this.onNavigateToPlanner,
-    required this.onNavigateToHabits,
-    required this.onNavigateToDashboard,
-    required this.onNavigateToBudget,
-    required this.onOpenAppBlocker,
-    required this.onNavigateToLeaderboard,
     required this.onEditProfile,
-    required this.onOpenNotifications,
-    required this.onDeleteAccount,
   });
 
   @override
@@ -2099,8 +2198,6 @@ class _ProfileSheet extends StatelessWidget {
                   AppAvatar(
                     size: 74,
                     borderRadius: 22,
-                    showEditBadge: true,
-                    onTap: onEditProfile,
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -2219,16 +2316,20 @@ class _ProfileSheet extends StatelessWidget {
                   context,
                   Icons.auto_stories_rounded,
                   AppStrings.semester,
-                  semesterLabel(settings.academicLevel, settings.academicTerm, _isBn),
+                  (settings.academicLevel != null &&
+                          settings.academicTerm != null)
+                      ? semesterLabel(
+                          settings.academicLevel,
+                          settings.academicTerm,
+                          _isBn)
+                      : profile.semester,
                 ),
                 Divider(height: 20, color: AppPalette.border(context)),
-                // Student ID / Phone are NOT in the database schema yet —
-                // show "Not set" instead of mock data, tap to edit later.
                 _infoRow(
                   context,
                   Icons.badge_outlined,
                   AppStrings.studentId,
-                  AppStrings.notSet,
+                  profile.studentId.isEmpty ? AppStrings.notSet : profile.studentId,
                   onTap: onEditProfile,
                 ),
                 Divider(height: 20, color: AppPalette.border(context)),
@@ -2242,321 +2343,218 @@ class _ProfileSheet extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 18),
-          // Elective course selection — changing it re-filters the enrolled
-          // course list, subject distribution and planner courses.
-          _ElectiveSelector(onChanged: onElectivesChanged),
-          const SizedBox(height: 18),
-          // Enrolled courses (relates to Planner)
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppPalette.card(context),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: AppPalette.border(context).withValues(alpha: 0.4),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.menu_book_rounded,
-                      color: AppColors.purple,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      AppStrings.enrolledCourses,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppPalette.textPrimary(context),
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '${catalogCourses.length} ${AppStrings.subjects}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppPalette.textSecondary(context).withValues(
-                          alpha: 0.7,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                if (catalogCourses.isEmpty)
-                  Text(
-                    settings.academicLevel == null ||
-                            settings.academicTerm == null
-                        ? (_isBn
-                            ? 'Level ও Term সিলেক্ট করলে কোর্স দেখা যাবে।'
-                            : 'Select your Level & Term in the planner to see courses.')
-                        : (_isBn
-                            ? 'এই Level/Term-এ কোনো কোর্স পাওয়া যায়নি।'
-                            : 'No courses found for this Level & Term.'),
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: AppPalette.textSecondary(context).withValues(alpha: 0.7),
-                    ),
-                  )
-                else
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: catalogCourses.map((course) {
-                      final code = course['code'] ?? '';
-                      final name = course['name'] ?? '';
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.purple.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: AppColors.purple.withValues(alpha: 0.15),
-                          ),
-                        ),
-                        child: Text(
-                          name.isEmpty || name == code
-                              ? code
-                              : '$code · $name',
-                          style: const TextStyle(
-                            color: AppColors.purple,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                const SizedBox(height: 10),
-                GestureDetector(
-                  onTap: onNavigateToPlanner,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: AppColors.purple.withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          AppStrings.viewInPlanner,
-                          style: const TextStyle(
-                            color: AppColors.purple,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Icon(
-                          Icons.arrow_forward_rounded,
-                          color: AppColors.purple,
-                          size: 16,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _infoRow(
+    BuildContext context,
+    IconData icon,
+    String label,
+    String value, {
+    VoidCallback? onTap,
+  }) {
+    final row = Row(
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: AppColors.purple.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
           ),
-          const SizedBox(height: 18),
-          // Quick links to other pages
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppPalette.card(context),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: AppPalette.border(context).withValues(alpha: 0.4),
+          child: Icon(icon, color: AppColors.purple, size: 17),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: AppPalette.textSecondary(context),
+                  fontSize: 11.5,
+                ),
               ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.explore_outlined,
-                      color: AppPalette.textSecondary(context),
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      AppStrings.quickAccess,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppPalette.textPrimary(context),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _quickLink(
-                  context,
-                  Icons.local_fire_department_rounded,
-                  AppStrings.habitTracker,
-                  AppStrings.checkTodayProgress,
-                  const Color(0xFFF59E0B),
-                  onNavigateToHabits,
-                ),
-                const SizedBox(height: 8),
-                _quickLink(
-                  context,
-                  Icons.account_balance_wallet_rounded,
-                  AppStrings.expenseManager,
-                  AppStrings.viewBudget,
-                  const Color(0xFF10B981),
-                  onNavigateToBudget,
-                ),
-                const SizedBox(height: 8),
-                _quickLink(
-                  context,
-                  Icons.leaderboard_rounded,
-                  AppStrings.leaderboard,
-                  AppStrings.seeRankings,
-                  const Color(0xFF6366F1),
-                  onNavigateToLeaderboard,
-                ),
-                const SizedBox(height: 8),
-                _quickLink(
-                  context,
-                  Icons.block_rounded,
-                  AppStrings.appBlocker,
-                  AppStrings.blockApps,
-                  const Color(0xFFDC2626),
-                  onOpenAppBlocker,
-                ),
-                const SizedBox(height: 8),
-                _quickLink(
-                  context,
-                  Icons.dashboard_rounded,
-                  AppStrings.twinDashboard,
-                  AppStrings.backHome,
-                  AppColors.purple,
-                  onNavigateToDashboard,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 22),
-          // Settings
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppPalette.card(context),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: AppPalette.border(context).withValues(alpha: 0.4),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.settings_outlined,
-                      color: AppPalette.textSecondary(context),
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      AppStrings.settings,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppPalette.textPrimary(context),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _settingRow(
-                  context,
-                  Icons.palette_outlined,
-                  AppStrings.appTheme,
-                  _themeLabel(settings.themeMode),
-                  () => _showThemeSheet(context),
-                ),
-                const SizedBox(height: 4),
-                _settingRow(
-                  context,
-                  Icons.notifications_outlined,
-                  AppStrings.notifications,
-                  settings.notificationsEnabled
-                      ? AppStrings.on
-                      : AppStrings.off,
-                  onOpenNotifications,
-                ),
-                const SizedBox(height: 4),
-                _settingRow(
-                  context,
-                  Icons.language_outlined,
-                  AppStrings.language,
-                  settings.locale.languageCode == 'bn'
-                      ? AppStrings.bengali
-                      : AppStrings.english,
-                  () => _showLanguageSheet(context),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 22),
-          // Sign Out
-          SizedBox(
-            height: 52,
-            child: OutlinedButton.icon(
-              onPressed: onSignOut,
-              icon: const Icon(Icons.logout_rounded, size: 18),
-              label: Text(
-                AppStrings.signOut,
-                style: const TextStyle(
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: TextStyle(
+                  color: value == AppStrings.notSet
+                      ? AppPalette.textSecondary(context)
+                      : AppPalette.textPrimary(context),
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  fontSize: 15,
                 ),
               ),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFDC2626),
-                side: BorderSide(
-                  color: const Color(0xFFDC2626).withValues(alpha: 0.3),
-                ),
-                backgroundColor: const Color(
-                  0xFFDC2626,
-                ).withValues(alpha: 0.05),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-            ),
+            ],
           ),
-          const SizedBox(height: 14),
-          // Delete Account (frees the email for a fresh registration)
-          TextButton.icon(
-            onPressed: onDeleteAccount,
-            icon: const Icon(Icons.delete_forever_outlined, size: 18),
-            label: Text(
-              AppStrings.deleteAccount,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
+        ),
+        if (onTap != null)
+          const Icon(
+            Icons.chevron_right_rounded,
+            color: Color(0xFF9CA3AF),
+            size: 18,
+          ),
+      ],
+    );
+    if (onTap == null) return row;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: row,
+    );
+  }
+}
+
+// =============================================================================
+// SETTINGS BOTTOM SHEET — theme, notifications, language, change password.
+// =============================================================================
+
+class _SettingsSheet extends StatelessWidget {
+  final VoidCallback onOpenNotifications;
+  final VoidCallback onChangePassword;
+  final VoidCallback onDeleteAccount;
+
+  const _SettingsSheet({
+    required this.onOpenNotifications,
+    required this.onChangePassword,
+    required this.onDeleteAccount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = AppSettings.instance;
+    final isBn = settings.locale.languageCode == 'bn';
+    return Container(
+      margin: const EdgeInsets.only(top: 20),
+      decoration: BoxDecoration(
+        color: AppPalette.background(context),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: ListenableBuilder(
+        listenable: settings,
+        builder: (context, _) => ListView(
+          padding: const EdgeInsets.fromLTRB(22, 12, 22, 32),
+          shrinkWrap: true,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: AppPalette.border(context),
+                  borderRadius: BorderRadius.circular(999),
+                ),
               ),
             ),
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFFDC2626).withValues(alpha: 0.85),
+            const SizedBox(height: 16),
+            Text(
+              AppStrings.settings,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: AppPalette.textPrimary(context),
+              ),
             ),
-          ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppPalette.card(context),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: AppPalette.border(context).withValues(alpha: 0.4),
+                ),
+              ),
+              child: Column(
+                children: [
+                  _settingRow(
+                    context,
+                    Icons.palette_outlined,
+                    AppStrings.appTheme,
+                    _themeLabel(settings.themeMode),
+                    () => _showThemeSheet(context),
+                  ),
+                  Divider(
+                    height: 20,
+                    indent: 40,
+                    color: AppPalette.border(context),
+                  ),
+                  _settingRow(
+                    context,
+                    Icons.notifications_outlined,
+                    AppStrings.notifications,
+                    settings.notificationsEnabled ? AppStrings.on : AppStrings.off,
+                    onOpenNotifications,
+                  ),
+                  Divider(
+                    height: 20,
+                    indent: 40,
+                    color: AppPalette.border(context),
+                  ),
+                  _settingRow(
+                    context,
+                    Icons.language_outlined,
+                    AppStrings.language,
+                    settings.locale.languageCode == 'bn'
+                        ? AppStrings.bengali
+                        : AppStrings.english,
+                    () => _showLanguageSheet(context),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Change Password
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppPalette.card(context),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: AppPalette.border(context).withValues(alpha: 0.4),
+                ),
+              ),
+              child: Column(
+                children: [
+                  _settingRow(
+                    context,
+                    Icons.password_rounded,
+                    AppStrings.changePassword,
+                    '',
+                    onChangePassword,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Account (destructive)
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppPalette.card(context),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: const Color(0xFFDC2626).withValues(alpha: 0.25),
+                ),
+              ),
+              child: Column(
+                children: [
+                  _settingRow(
+                    context,
+                    Icons.delete_forever_rounded,
+                    AppStrings.deleteAccount,
+                    '',
+                    onDeleteAccount,
+                    destructive: true,
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -2595,9 +2593,7 @@ class _ProfileSheet extends StatelessWidget {
           ),
         ],
         (index) {
-          settings.themeMode = index == 0
-              ? ThemeMode.light
-              : ThemeMode.dark;
+          settings.themeMode = index == 0 ? ThemeMode.light : ThemeMode.dark;
         },
       ),
     );
@@ -2731,140 +2727,31 @@ class _ProfileSheet extends StatelessWidget {
     );
   }
 
-  Widget _infoRow(
-    BuildContext context,
-    IconData icon,
-    String label,
-    String value, {
-    VoidCallback? onTap,
-  }) {
-    final row = Row(
-      children: [
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: AppColors.purple.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: AppColors.purple, size: 17),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  color: AppPalette.textSecondary(context),
-                  fontSize: 11.5,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                value,
-                style: TextStyle(
-                  color: value == AppStrings.notSet
-                      ? AppPalette.textSecondary(context)
-                      : AppPalette.textPrimary(context),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (onTap != null)
-          const Icon(
-            Icons.chevron_right_rounded,
-            color: Color(0xFF9CA3AF),
-            size: 18,
-          ),
-      ],
-    );
-    if (onTap == null) return row;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: row,
-    );
-  }
-
-  Widget _quickLink(
-    BuildContext context,
-    IconData icon,
-    String title,
-    String subtitle,
-    Color color,
-    VoidCallback onTap,
-  ) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: 0.12)),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      color: AppPalette.textSecondary(context),
-                      fontSize: 11.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: color.withValues(alpha: 0.5),
-              size: 20,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _settingRow(
     BuildContext context,
     IconData icon,
     String label,
     String value,
-    VoidCallback onTap,
-  ) {
+    VoidCallback onTap, {
+    bool destructive = false,
+  }) {
+    final color =
+        destructive ? const Color(0xFFDC2626) : AppPalette.textSecondary(context);
     return GestureDetector(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         child: Row(
           children: [
-            Icon(icon, color: AppPalette.textSecondary(context), size: 20),
+            Icon(icon, color: color, size: 20),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 label,
                 style: TextStyle(
-                  color: AppPalette.textPrimary(context),
+                  color: destructive
+                      ? const Color(0xFFDC2626)
+                      : AppPalette.textPrimary(context),
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                 ),
@@ -2873,11 +2760,328 @@ class _ProfileSheet extends StatelessWidget {
             Text(
               value,
               style: TextStyle(
-                color: AppPalette.textSecondary(context),
+                color: color,
                 fontSize: 13,
               ),
             ),
             const SizedBox(width: 8),
+            Icon(Icons.chevron_right_rounded, color: color, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// CHANGE PASSWORD DIALOG — current / new / confirm.
+// =============================================================================
+
+class _PasswordResult {
+  final String currentPassword;
+  final String newPassword;
+  const _PasswordResult({required this.currentPassword, required this.newPassword});
+}
+
+class _ChangePasswordSheet extends StatefulWidget {
+  const _ChangePasswordSheet();
+
+  @override
+  State<_ChangePasswordSheet> createState() => _ChangePasswordSheetState();
+}
+
+class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
+  final _currentController = TextEditingController();
+  final _newController = TextEditingController();
+  final _confirmController = TextEditingController();
+  bool _obscureCurrent = true;
+  bool _obscureNew = true;
+  bool _obscureConfirm = true;
+
+  @override
+  void dispose() {
+    _currentController.dispose();
+    _newController.dispose();
+    _confirmController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Text(
+        AppStrings.changePassword,
+        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              AppStrings.enterCurrentPassword,
+              style: TextStyle(
+                fontSize: 13,
+                color: AppPalette.textSecondary(context),
+              ),
+            ),
+            const SizedBox(height: 12),
+            _passwordField(
+              controller: _currentController,
+              label: AppStrings.currentPassword,
+              obscure: _obscureCurrent,
+              onToggle: () => setState(() => _obscureCurrent = !_obscureCurrent),
+            ),
+            const SizedBox(height: 12),
+            _passwordField(
+              controller: _newController,
+              label: AppStrings.newPassword,
+              obscure: _obscureNew,
+              onToggle: () => setState(() => _obscureNew = !_obscureNew),
+            ),
+            const SizedBox(height: 12),
+            _passwordField(
+              controller: _confirmController,
+              label: AppStrings.confirmPassword,
+              obscure: _obscureConfirm,
+              onToggle: () => setState(() => _obscureConfirm = !_obscureConfirm),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          style: TextButton.styleFrom(
+            foregroundColor: AppPalette.textSecondary(context),
+          ),
+          child: Text(AppStrings.cancel),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.purple,
+            foregroundColor: Colors.white,
+          ),
+          onPressed: _submit,
+          child: Text(AppStrings.updatePassword),
+        ),
+      ],
+    );
+  }
+
+  Widget _passwordField({
+    required TextEditingController controller,
+    required String label,
+    required bool obscure,
+    required VoidCallback onToggle,
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(color: AppPalette.textSecondary(context)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        suffixIcon: IconButton(
+          icon: Icon(
+            obscure ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+            color: AppPalette.textSecondary(context),
+          ),
+          onPressed: onToggle,
+        ),
+      ),
+    );
+  }
+
+  void _submit() {
+    final current = _currentController.text;
+    final newPass = _newController.text;
+    final confirm = _confirmController.text;
+
+    if (current.isEmpty || newPass.isEmpty || confirm.isEmpty) {
+      _showError(AppSettings.instance.locale.languageCode == 'bn'
+          ? 'সবগুলো ক্ষেত্র পূরণ করুন'
+          : 'Please fill in all fields');
+      return;
+    }
+    if (newPass.length < 6) {
+      _showError(AppStrings.passwordTooShortText);
+      return;
+    }
+    if (newPass != confirm) {
+      _showError(AppStrings.passwordsDoNotMatch);
+      return;
+    }
+    Navigator.pop(context, _PasswordResult(
+      currentPassword: current,
+      newPassword: newPass,
+    ));
+  }
+
+  void _showError(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg),
+      backgroundColor: const Color(0xFFDC2626),
+      behavior: SnackBarBehavior.floating,
+    ));
+  }
+}
+
+// =============================================================================
+// DASHBOARD SIDEBAR (DRAWER)
+// =============================================================================
+
+class _AppDrawer extends StatelessWidget {
+  final VoidCallback onProfile;
+  final VoidCallback onManageCourses;
+  final VoidCallback onLeaderboard;
+  final VoidCallback onAppBlocker;
+  final VoidCallback onNotifications;
+  final VoidCallback onSettings;
+  final VoidCallback onSignOut;
+
+  const _AppDrawer({
+    required this.onProfile,
+    required this.onManageCourses,
+    required this.onLeaderboard,
+    required this.onAppBlocker,
+    required this.onNotifications,
+    required this.onSettings,
+    required this.onSignOut,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = AppSettings.instance.profile;
+    return Drawer(
+      backgroundColor: AppPalette.background(context),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.horizontal(right: Radius.circular(28)),
+      ),
+      width: 300,
+      child: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                children: [
+                  AppAvatar(size: 72, borderRadius: 20),
+                  const SizedBox(height: 10),
+                  Text(
+                    profile.name,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: AppPalette.textPrimary(context),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    profile.email,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppPalette.textSecondary(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Divider(color: AppPalette.border(context)),
+            const SizedBox(height: 8),
+            _DrawerItem(
+              icon: Icons.person_rounded,
+              label: AppStrings.profile,
+              onTap: onProfile,
+            ),
+            _DrawerItem(
+              icon: Icons.menu_book_rounded,
+              label: AppStrings.manageCourses,
+              onTap: onManageCourses,
+            ),
+            _DrawerItem(
+              icon: Icons.leaderboard_rounded,
+              label: AppStrings.leaderboard,
+              onTap: onLeaderboard,
+            ),
+            _DrawerItem(
+              icon: Icons.block_rounded,
+              label: AppStrings.appBlocker,
+              onTap: onAppBlocker,
+            ),
+            _DrawerItem(
+              icon: Icons.notifications_none_rounded,
+              label: AppStrings.notificationCenter,
+              onTap: onNotifications,
+            ),
+            _DrawerItem(
+              icon: Icons.settings_rounded,
+              label: AppStrings.settings,
+              onTap: onSettings,
+            ),
+            const SizedBox(height: 8),
+            Divider(color: AppPalette.border(context)),
+            const SizedBox(height: 8),
+            _DrawerItem(
+              icon: Icons.logout_rounded,
+              label: AppStrings.signOut,
+              destructive: true,
+              onTap: onSignOut,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DrawerItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool destructive;
+
+  const _DrawerItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.destructive = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color =
+        destructive ? const Color(0xFFDC2626) : AppPalette.textPrimary(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const Spacer(),
             Icon(
               Icons.chevron_right_rounded,
               color: AppPalette.textSecondary(context),
@@ -2891,250 +3095,9 @@ class _ProfileSheet extends StatelessWidget {
 }
 
 // =============================================================================
-// ELECTIVE SELECTOR — pick/change electives from the profile sheet.
-// L4T1: 1 theory elective · L4T2: 1 theory + 1 sessional elective.
-// Saving updates users/{uid}.elective_courses, then re-filters the enrolled
-// course list, subject distribution and planner courses via [onChanged].
-// =============================================================================
-
-class _ElectiveSelector extends StatefulWidget {
-  final Future<void> Function() onChanged;
-  const _ElectiveSelector({required this.onChanged});
-
-  @override
-  State<_ElectiveSelector> createState() => _ElectiveSelectorState();
-}
-
-class _ElectiveSelectorState extends State<_ElectiveSelector> {
-  List<Map<String, dynamic>> _theoryOptions = [];
-  List<Map<String, dynamic>> _sessionalOptions = [];
-  String? _theory;
-  String? _sessional;
-  bool _saving = false;
-
-  bool get _isBn => AppSettings.instance.locale.languageCode == 'bn';
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final s = AppSettings.instance;
-    final level = s.academicLevel;
-    final term = s.academicTerm;
-    if (level == null || term == null || level != 4) return;
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection('course_catalog')
-          .where('level', isEqualTo: level)
-          .where('term', isEqualTo: term)
-          .where('isElective', isEqualTo: true)
-          .get();
-      if (!mounted) return;
-      setState(() {
-        _theoryOptions = [
-          for (final d in snap.docs)
-            if (d.data()['type'] == 'Theory')
-              {'id': d.id, 'code': d.data()['code'], 'name': d.data()['name']},
-        ];
-        _sessionalOptions = [
-          for (final d in snap.docs)
-            if (d.data()['type'] == 'Sessional')
-              {'id': d.id, 'code': d.data()['code'], 'name': d.data()['name']},
-        ];
-        // Pre-select previously chosen electives
-        final saved = s.electiveCourseIds;
-        for (final opt in _theoryOptions) {
-          if (saved.contains(opt['id'])) _theory = opt['id'] as String?;
-        }
-        for (final opt in _sessionalOptions) {
-          if (saved.contains(opt['id'])) _sessional = opt['id'] as String?;
-        }
-      });
-    } catch (e) {
-      debugPrint('Failed to load electives: $e');
-    }
-  }
-
-  Future<void> _save() async {
-    final s = AppSettings.instance;
-    final level = s.academicLevel;
-    final term = s.academicTerm;
-    if (level == null || term == null) return;
-    final ids = [
-      if (_theory != null) _theory!,
-      if (_sessional != null && term == 2) _sessional!,
-    ];
-    setState(() => _saving = true);
-    try {
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid != null) {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(uid)
-            .set({'elective_courses': ids}, SetOptions(merge: true));
-      }
-      s.setAcademicInfo(level, term, electiveIds: ids);
-      await widget.onChanged();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content:
-            Text(_isBn ? 'Elective কোর্স আপডেট হয়েছে।' : 'Elective courses updated.'),
-        behavior: SnackBarBehavior.floating,
-      ));
-    } catch (e) {
-      debugPrint('Failed to save electives: $e');
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final s = AppSettings.instance;
-    final level = s.academicLevel;
-    final term = s.academicTerm;
-    // Only Level 4 has elective requirements; other levels show nothing.
-    if (level != 4 || term == null) return const SizedBox.shrink();
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppPalette.card(context),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: AppPalette.border(context).withValues(alpha: 0.4),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.tune_rounded, color: AppColors.purple, size: 18),
-              const SizedBox(width: 8),
-              Text(
-                _isBn ? 'Elective কোর্স' : 'Elective Courses',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: AppPalette.textPrimary(context),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (_theoryOptions.isEmpty && _sessionalOptions.isEmpty)
-            Text(
-              _isBn ? 'কোনো elective পাওয়া যায়নি।' : 'No electives available.',
-              style: TextStyle(
-                fontSize: 12.5,
-                color: AppPalette.textSecondary(context).withValues(alpha: 0.7),
-              ),
-            )
-          else ...[
-            _dropdown(
-              value: _theory,
-              options: _theoryOptions,
-              hint: _isBn ? 'Theory elective বেছে নিন' : 'Choose theory elective',
-              onChanged: (v) => setState(() => _theory = v),
-            ),
-            if (term == 2) ...[
-              const SizedBox(height: 10),
-              _dropdown(
-                value: _sessional,
-                options: _sessionalOptions,
-                hint: _isBn
-                    ? 'Sessional elective বেছে নিন'
-                    : 'Choose sessional elective',
-                onChanged: (v) => setState(() => _sessional = v),
-              ),
-            ],
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              height: 42,
-              child: ElevatedButton(
-                onPressed: _saving ? null : _save,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.purple,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 0,
-                ),
-                child: _saving
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2.2))
-                    : Text(
-                        AppStrings.save,
-                        style: const TextStyle(
-                            fontSize: 13.5, fontWeight: FontWeight.w800),
-                      ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _dropdown({
-    required String? value,
-    required List<Map<String, dynamic>> options,
-    required String hint,
-    required ValueChanged<String?> onChanged,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: AppColors.purple.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.purple.withValues(alpha: 0.25)),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          isExpanded: true,
-          hint: Text(hint,
-              style: TextStyle(
-                  fontSize: 12.5,
-                  color: AppPalette.textSecondary(context))),
-          icon: const Icon(Icons.expand_more_rounded, size: 18),
-          dropdownColor: Theme.of(context).brightness == Brightness.dark
-              ? const Color(0xFF232336)
-              : Colors.white,
-          items: [
-            for (final opt in options)
-              DropdownMenuItem(
-                value: opt['id'] as String,
-                child: Text(
-                  '${opt['code']} — ${opt['name']}',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                    color: AppPalette.textPrimary(context),
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-          ],
-          onChanged: onChanged,
-        ),
-      ),
-    );
-  }
-}
-
-// =============================================================================
 // REUSABLE COMPONENTS
 // =============================================================================
+
 
 class _TabItem {
   final String label;

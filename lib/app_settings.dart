@@ -31,6 +31,7 @@ class UserProfile {
   final String session;
   final String phone;
   final String photoUrl;
+  final String studentId;
   final List<String> enrolledCourses;
 
   const UserProfile({
@@ -43,6 +44,7 @@ class UserProfile {
     this.session = '2022-2026',
     this.phone = '',
     this.photoUrl = '',
+    this.studentId = '',
     this.enrolledCourses = const [],
   });
 
@@ -56,6 +58,7 @@ class UserProfile {
     String? session,
     String? phone,
     String? photoUrl,
+    String? studentId,
     List<String>? enrolledCourses,
   }) =>
       UserProfile(
@@ -68,6 +71,7 @@ class UserProfile {
         session: session ?? this.session,
         phone: phone ?? this.phone,
         photoUrl: photoUrl ?? this.photoUrl,
+        studentId: studentId ?? this.studentId,
         enrolledCourses: enrolledCourses ?? this.enrolledCourses,
       );
 
@@ -250,6 +254,15 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Course Setup ────────────────────────────────────────────────────────
+  bool _courseSetupCompleted = false;
+  bool get courseSetupCompleted => _courseSetupCompleted;
+
+  void setCourseSetupCompleted(bool value) {
+    _courseSetupCompleted = value;
+    notifyListeners();
+  }
+
   /// Syncs the in-memory profile with the Firestore `users/{uid}` doc.
   /// Only maps fields that exist in the database — mock-only fields
   /// (nickname, phone, session, enrolledCourses) keep their values.
@@ -261,8 +274,10 @@ class AppSettings extends ChangeNotifier {
       department: user.department.isEmpty ? _profile.department : user.department,
       semester: user.semester > 0 ? '${_ordinal(user.semester)} Semester' : _profile.semester,
       photoUrl: user.profilePhoto ?? '',
-      // Not in the DB schema — always reset so no mock data leaks through.
-      phone: '',
+      // Synced from the DB schema so edits made on the profile screen
+      // persist across reloads.
+      phone: user.phone,
+      studentId: user.studentId,
       nickname: '',
     );
     // Sync level/term from DB if set
@@ -271,6 +286,7 @@ class AppSettings extends ChangeNotifier {
     if (user.electiveCourses.isNotEmpty) {
       _electiveCourseIds = user.electiveCourses;
     }
+    _courseSetupCompleted = user.courseSetupCompleted;
     notifyListeners();
   }
 
