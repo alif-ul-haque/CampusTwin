@@ -8,7 +8,7 @@ import 'package:campus_twin/planner_page.dart';
 import 'package:campus_twin/habitTracker.dart';
 import 'package:campus_twin/welcome_page.dart';
 import 'package:campus_twin/assistant.dart';
-import 'package:campus_twin/budget_page.dart';
+import 'package:campus_twin/budget_page.dart' as budget;
 import 'package:campus_twin/app_blocker_page.dart';
 import 'package:campus_twin/leaderboard_page.dart';
 import 'package:campus_twin/leaderboard_scoring.dart';
@@ -287,7 +287,56 @@ class _DashboardPageState extends State<DashboardPage>
     await _loadMyLeaderboard();
     await _loadWeeklyHoursFromDb();
     await _loadUserCoursesForSubjectDistribution();
+    await _loadBudgetLeft();
+    await _loadStreak();
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  /// Loads the signed-in user's real monthly budget left (income - expense
+  /// for the current month) from the Firestore-backed BudgetRepository.
+  Future<void> _loadBudgetLeft() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      await budget.BudgetRepository.loadFromDb();
+      final now = DateTime.now();
+      final monthTxns = budget.BudgetRepository.inMonth(now);
+      final income =
+          budget.BudgetRepository.totalOf(monthTxns, budget.TxnType.income);
+      final expense =
+          budget.BudgetRepository.totalOf(monthTxns, budget.TxnType.expense);
+      if (!mounted) return;
+      setState(() {
+        _DashboardRepository.budgetRemaining = income - expense;
+      });
+    } catch (_) {
+      // Leave the previous value if the read fails.
+    }
+  }
+
+  /// Loads the signed-in user's real daily check-in streak from the
+  /// `daily_checkins` collection (consecutive `day_number`, reset to 1 on a
+  /// missed day).
+  Future<void> _loadStreak() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('daily_checkins')
+          .where('user_id', isEqualTo: uid)
+          .orderBy('checkin_date', descending: true)
+          .limit(1)
+          .get();
+      final streak = snap.docs.isEmpty
+          ? 0
+          : (snap.docs.first.data()['day_number'] as int? ?? 0);
+      if (!mounted) return;
+      setState(() {
+        _DashboardRepository.habitStreak = streak;
+      });
+    } catch (_) {
+      // Leave the previous value if the read fails.
+    }
   }
 
   /// Loads my own public leaderboard score/rank from the `leaderboard_scores`
@@ -1002,7 +1051,7 @@ class _DashboardPageState extends State<DashboardPage>
       case 2:
         return _buildHabitsTab();
       case 3:
-        return const BudgetPage();
+        return const budget.BudgetPage();
       case 4:
         return const AssistantTab();
       default:
