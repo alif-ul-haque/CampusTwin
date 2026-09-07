@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +11,8 @@ import 'package:campus_twin/twinDashboard.dart';
 import 'package:campus_twin/l10n.dart';
 import 'package:campus_twin/app_settings.dart';
 import 'package:campus_twin/services/gemini_service.dart';
+import 'package:campus_twin/services/stress_model.dart';
+import 'package:campus_twin/services/stress_predictor.dart';
 
 // =============================================================================
 // DATA MODELS
@@ -79,7 +82,8 @@ class HabitMetric {
 
   bool get isOnTrack => isGoalMet(current);
 
-  HabitMetric copyWith({double? current, double? target}) => HabitMetric(
+  HabitMetric copyWith({double? current, double? target, List<double>? weekValues}) =>
+      HabitMetric(
         type: type,
         title: title,
         icon: icon,
@@ -87,7 +91,7 @@ class HabitMetric {
         current: current ?? this.current,
         target: target ?? this.target,
         unit: unit,
-        weekValues: weekValues,
+        weekValues: weekValues ?? this.weekValues,
         streak: streak,
         lowerIsBetter: lowerIsBetter,
       );
@@ -183,8 +187,53 @@ class HabitRepository {
 
   static int habitScore = 0;
 
+  /// True when the device hasn't granted "Usage access" to CampusTwin, so the
+  /// phone's real screen time can't be read (UI shows a notice + settings link).
+  static bool usageAccessDenied = false;
+
+  /// Human-readable diagnostic from the native side (permission state, event
+  /// count/types today, computed hours) — shown when screen time reads 0.00h.
+  static String screenTimeDebug = '';
+
   // ── Native channel ───────────────────────────────────────────────────────
   static const _usageChannel = MethodChannel('campus_twin/usage_access');
+
+  static Future<bool> hasUsageAccess() async {
+    try {
+      final result = await _usageChannel.invokeMethod<bool>('checkUsageAccess');
+      return result ?? false;
+    } catch (_) {
+      // Channel unavailable (non-Android / tests) — treat as granted.
+      return true;
+    }
+  }
+
+  /// Opens the system "Apps with usage access" screen for CampusTwin.
+  static Future<void> openUsageSettings() async {
+    try {
+      await _usageChannel.invokeMethod('openUsageSettings');
+    } catch (_) {}
+  }
+
+  /// Fetches the native screen-time diagnostic and formats it compactly.
+  static Future<String> fetchScreenDebugString() async {
+    try {
+      final raw =
+          await _usageChannel.invokeMethod<Map<dynamic, dynamic>>('getScreenTimeDebug');
+      if (raw == null) return '';
+      final has = raw['has_access'];
+      final ev = raw['events_today'];
+      final types = (raw['type_counts'] as Map? ?? const {})
+          .entries
+          .map((e) => '${e.key}:${e.value}')
+          .join(', ');
+      final h = raw['today_hours'];
+      debugPrint('[screen_time] access=$has events=$ev types={$types} today=$h');
+      return 'access=$has · events=$ev · types{$types} · today=$h';
+    } catch (_) {
+      return '';
+    }
+  }
 
   static Future<double> fetchRealScreenTime() async {
     try {
@@ -193,6 +242,64 @@ class HabitRepository {
       return double.parse(raw.toStringAsFixed(2));
     } catch (_) {
       return 0.0;
+    }
+  }
+
+  /// Real phone screen time for each day of the current week (Mon–Sun),
+  /// fetched live from the device so the chart updates as the phone updates.
+  static Future<List<double>> fetchWeekScreenTime() async {
+    try {
+      final raw = await _usageChannel.invokeMethod<List<dynamic>>('getScreenTimeWeek');
+      if (raw == null || raw.length < 7) return List.filled(7, 0.0);
+      return [
+        for (final v in raw.take(7))
+          double.parse(((v is num ? v : 0.0).clamp(0.0, 24.0)).toStringAsFixed(2)),
+      ];
+    } catch (_) {
+      return List.filled(7, 0.0);
+    }
+  }
+
+  /// Live-refreshes today's screen-time slot straight from the phone while the
+  /// user is on the page (called periodically). Returns true when a value
+  /// actually changed so the page can re-render.
+  static Future<bool> refreshLiveScreenTime() async {
+    try {
+      final todayIdx = DateTime.now().weekday - 1;
+      usageAccessDenied = !await hasUsageAccess();
+      final week = await fetchWeekScreenTime();
+      final todayValue = week.length > todayIdx ? week[todayIdx] : 0.0;
+      final i = metrics.indexWhere((m) => m.type == HabitType.screenTime);
+      if (usageAccessDenied) {
+        screenTimeDebug = '';
+        return false;
+      }
+      if (todayValue <= 0) {
+        // Still zero — refresh the native diagnostic (console only) so we can
+        // tell whether it's a device-event issue or something else.
+        screenTimeDebug = await fetchScreenDebugString();
+        return false;
+      }
+      if (i == -1) return false;
+      screenTimeDebug = '';
+      final m = metrics[i];
+      final unchanged = (m.current - todayValue).abs() < 0.01 &&
+          m.weekValues.length > todayIdx &&
+          (m.weekValues[todayIdx] - todayValue).abs() < 0.01;
+      if (unchanged) return false;
+      final weekValues = [...m.weekValues];
+      if (todayIdx < weekValues.length) weekValues[todayIdx] = todayValue;
+      metrics[i] = m.copyWith(current: todayValue, weekValues: weekValues);
+      final old = weekHasDataByType[HabitType.screenTime]!;
+      weekHasDataByType[HabitType.screenTime] = [
+        for (var k = 0; k < 7; k++)
+          (k < week.length && week[k] > 0) || old[k],
+      ];
+      habitScore = _computeHabitScore();
+      _cachePrediction();
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -208,8 +315,12 @@ class HabitRepository {
   static int _computeHabitScore() {
     double score = 0;
     for (final m in metrics) {
-      if (m.type == HabitType.score || m.target <= 0) continue;
-      score += m.progress * _weightFor(m.type) * 100;
+      if (m.type == HabitType.score) continue;
+      final target = m.target > 0 ? m.target : defaultTargetFor(m.type);
+      final progress = m.lowerIsBetter
+          ? (m.current <= target ? 1.0 : (2 - m.current / target).clamp(0.0, 1.0))
+          : (m.current / target).clamp(0.0, 1.0);
+      score += progress * _weightFor(m.type) * 100;
     }
     return score.round().clamp(0, 100).toInt();
   }
@@ -225,6 +336,10 @@ class HabitRepository {
   /// change — not just on a new day.
   static String _savedMetricsSnapshot = '';
 
+  /// Latest on-device ML prediction (model + heuristic blend) for today's
+  /// metrics. Null until the model asset has been loaded and computed.
+  static StressPredictionResult? prediction;
+
   /// Restores saved insights, then auto-regenerates fresh ones when the
   /// last prediction is missing, from a previous calendar day, or was built
   /// from different habit data — a new day (00:00) means new habit data, so
@@ -235,6 +350,11 @@ class HabitRepository {
     insightsLoaded = true;
     lastPredictionAt = null;
     _savedMetricsSnapshot = '';
+    // On-device Random Forest powers the stress prediction + AI insights.
+    try {
+      await StressModel.instance.load();
+    } catch (_) {}
+    _cachePrediction();
     await _restoreFromDb();
     final stale = forceFresh ||
         lastPredictionAt == null ||
@@ -243,6 +363,20 @@ class HabitRepository {
     if (stale) {
       await generateInsightsFromAi();
     }
+  }
+
+  /// (Re)computes the blended ML prediction from the current `metrics` values.
+  static void _cachePrediction() {
+    if (metrics.isEmpty || !StressModel.instance.isLoaded) {
+      prediction = null;
+      return;
+    }
+    prediction = StressPredictor.compute(
+      habitScore: _computeHabitScore().toDouble(),
+      sleepHours: _valueOf(HabitType.sleep),
+      exerciseMinutes: _valueOf(HabitType.exercise),
+      screenTimeHours: _valueOf(HabitType.screenTime),
+    );
   }
 
   /// Guards against overlapping Gemini calls (auto-open + save + manual tap).
@@ -275,12 +409,32 @@ class HabitRepository {
     try {
       final data = _metricsData();
 
+      final predictionText = prediction == null
+          ? 'not available'
+          : '${prediction!.level} (score ${prediction!.score}/100, '
+              'model probabilities low=${prediction!.probabilityLow.toStringAsFixed(2)}, '
+              'moderate=${prediction!.probabilityModerate.toStringAsFixed(2)}, '
+              'high=${prediction!.probabilityHigh.toStringAsFixed(2)})';
+
       final prompt = '''
 You are a wellness coach analyzing a student's weekly habit data (JSON below).
-Return a JSON array of exactly 3 short insights. Each item must have:
-tag (a short 1-2 word category, e.g. "Sleep Pattern"), text (one encouraging
-or corrective sentence, under 25 words), icon (one of: sleep, water, exercise,
-screen, stress, general).
+A Random Forest model predicts their current stress using sleep, exercise and
+screen time. Base your observations on this prediction.
+
+Return a JSON array of exactly 5 short insights — one for EACH of the four
+habits, plus one overall stress verdict. Every habit insight MUST tie that
+habit's current value (vs its goal) to the predicted stress level. Rules:
+1. "Sleep Pattern" (icon sleep): relate sleep hours vs goal to the stress.
+2. "Hydration" (icon water): relate water intake vs goal to the stress.
+3. "Exercise" (icon exercise): relate exercise minutes vs goal to the stress.
+4. "Screen Time" (icon screen): relate screen time vs goal to the stress.
+5. "Overall Stress" (icon stress): a summary verdict of the predicted stress
+   level and the one habit most responsible for it.
+Each item must have: tag (1-2 word category, e.g. "Sleep Pattern"), text (one
+encouraging or corrective sentence, under 25 words), icon (one of: sleep,
+water, exercise, screen, stress, general).
+
+Predicted stress (on-device ML): $predictionText
 
 Habit data: ${jsonEncode(data)}
 
@@ -339,11 +493,12 @@ Respond with ONLY the JSON array.
     ),
   ];
 
-  /// Stress is the inverse of today's habit wellness — a fully on-track day
-  /// scores low, missed/exceeded targets score high. Reuses
-  /// `_computeHabitScore` (goal-aware, handles lower-is-better screen time)
-  /// so the value persisted to Firestore can never drift from the app score.
+  /// Stress score for the persisted prediction. Uses the blended ML result
+  /// (on-device Random Forest + goal-aware heuristic) when available, and
+  /// falls back to the pure heuristic otherwise.
   static int _derivedStressScore() {
+    final p = prediction;
+    if (p != null) return p.score;
     if (metrics.isEmpty) return 50;
     return (100 - _computeHabitScore()).clamp(0, 100).toInt();
   }
@@ -359,6 +514,7 @@ Respond with ONLY the JSON array.
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null || result.isEmpty) return;
       final score = _derivedStressScore();
+      final p = prediction;
       await FirebaseFirestore.instance.collection('stress_predictions').add({
         'user_id': uid,
         'score': score,
@@ -373,6 +529,14 @@ Respond with ONLY the JSON array.
             .toList(),
         'metrics_snapshot': _metricsSnapshot(),
         'predicted_at': Timestamp.now(),
+        // On-device ML model diagnostics (Random Forest on the 3 shared
+        // features: sleep, exercise, screen time).
+        if (p != null) ...{
+          'model_class': p.modelClass,
+          'model_probs': p.probabilities,
+          'model_score': p.modelScore,
+          'model_features': p.featuresUsed,
+        },
       });
     } catch (_) {}
   }
@@ -480,6 +644,41 @@ Respond with ONLY the JSON array.
         HabitType.screenTime => 8,
         HabitType.score => 0,
       };
+
+  /// Recommended daily targets used when the user hasn't set their own goal,
+  /// so logging, streak, chart feedback and the habit score work from day one.
+  static double defaultTargetFor(HabitType type) => switch (type) {
+        HabitType.sleep => 7.5,
+        HabitType.water => 2.5,
+        HabitType.exercise => 30,
+        HabitType.screenTime => 3.0,
+        HabitType.score => 0,
+      };
+
+  /// Formats converted phone-screen hours for display: minutes usage becomes
+/// a clean 2-decimal hour value, e.g. 23 min → '0.38', 30 min → '0.50'.
+  /// Callers append the unit ('h') themselves.
+  static String formatScreenTime(double hours) =>
+      hours.clamp(0.0, 999.0).toStringAsFixed(2);
+
+  /// Same goal rules as [HabitMetric.isGoalMet], but against an explicit
+  /// [target] (personal goal or [defaultTargetFor]) instead of the live one.
+  static bool goalMet(HabitType type, double value, double target) {
+    if (target <= 0) return false;
+    const eps = 1e-9;
+    switch (type) {
+      case HabitType.sleep:
+        final ratio = value / target;
+        return ratio >= 0.8 - eps && ratio <= 1.2 + eps;
+      case HabitType.water:
+      case HabitType.exercise:
+        return value / target >= 0.8 - eps;
+      case HabitType.screenTime:
+        return value <= target;
+      case HabitType.score:
+        return value >= target;
+    }
+  }
 
   /// Saves a user goal: updates the in-memory target and persists it to the
   /// `habit_goals/{uid}` doc. Returns true on success.
@@ -655,7 +854,8 @@ Respond with ONLY the JSON array.
       final today = DateTime(now.year, now.month, now.day);
 
       // Fetch screen time, goals and logs in parallel
-      final screenFuture = fetchRealScreenTime();
+      final screenFuture = fetchWeekScreenTime();
+      final permFuture = hasUsageAccess();
       final goalsFuture = FirebaseFirestore.instance
           .collection('habit_goals')
           .doc(uid)
@@ -666,7 +866,27 @@ Respond with ONLY the JSON array.
           .orderBy('log_date', descending: true)
           .limit(30)
           .get();
-      final realScreen = await screenFuture;
+      final weekScreen = await screenFuture;
+      usageAccessDenied = !await permFuture;
+      var realScreen =
+          weekScreen.length > today.weekday - 1 ? weekScreen[today.weekday - 1] : 0.0;
+      // Fallback for builds whose native side hasn't shipped the weekly query:
+      // today's live value still comes through the single-day method.
+      if (realScreen <= 0) {
+        final day = await fetchRealScreenTime();
+        if (day > 0) {
+          realScreen = day;
+          weekScreen[today.weekday - 1] = day;
+        }
+      }
+      // When nothing came back, pull the native diagnostic so the state is
+      // truthful (permission, event count/types); once a real value arrives
+      // the diagnostic is cleared so it never shows stale data.
+      if (realScreen <= 0) {
+        screenTimeDebug = await fetchScreenDebugString();
+      } else {
+        screenTimeDebug = '';
+      }
 
       // Apply the user's saved goals to the metric targets (0 = not set yet)
       try {
@@ -688,6 +908,18 @@ Respond with ONLY the JSON array.
           }
         }
       } catch (_) {}
+
+      // No saved goals at all → seed recommended defaults so scoring, streaks,
+      // chart feedback and logging all work out of the box.
+      final hasAnyGoal = metrics.any((m) => m.type != HabitType.score && m.target > 0);
+      if (!hasAnyGoal) {
+        metrics = [
+          for (final m in metrics)
+            m.type == HabitType.score
+                ? m
+                : m.copyWith(target: defaultTargetFor(m.type)),
+        ];
+      }
 
       if (snap.docs.isNotEmpty) {
         final allLogs = snap.docs.map((d) => HabitLog.fromMap(d.id, d.data())).toList();
@@ -717,9 +949,6 @@ Respond with ONLY the JSON array.
         }
 
         double valueFor(HabitType type, HabitLog log) {
-          if (type == HabitType.screenTime && _sameDay(log.logDate, today) && realScreen > 0) {
-            return realScreen;
-          }
           return switch (type) {
             HabitType.sleep => log.sleepHours,
             HabitType.water => log.waterIntakeLiter,
@@ -737,13 +966,10 @@ Respond with ONLY the JSON array.
           HabitType.exercise,
           HabitType.screenTime,
         ]) {
+          if (t == HabitType.screenTime) continue; // handled below via phone data
           weekHasDataByType[t] = [
             for (final log in weekLogs)
-              log != null &&
-                  (_hasLoggedData(t, log) ||
-                      (t == HabitType.screenTime &&
-                          _sameDay(log.logDate, today) &&
-                          realScreen > 0)),
+              log != null && _hasLoggedData(t, log),
           ];
         }
 
@@ -766,8 +992,40 @@ Respond with ONLY the JSON array.
             ),
         ];
 
+        // Screen time: prefer real phone data (Mon–Sun) over stored logs so
+        // the chart reflects actual device usage and updates as the phone does.
+        final si = metrics.indexWhere((m) => m.type == HabitType.screenTime);
+        if (si != -1) {
+          final m = metrics[si];
+          metrics[si] = m.copyWith(
+            current: realScreen > 0 ? realScreen : m.current,
+            weekValues: [
+              for (var i = 0; i < 7; i++)
+                i < weekScreen.length && weekScreen[i] > 0
+                    ? weekScreen[i]
+                    : m.weekValues[i],
+            ],
+          );
+        }
+        weekHasDataByType[HabitType.screenTime] = [
+          for (var i = 0; i < 7; i++)
+            weekScreen[i] > 0 ||
+                (weekLogs[i] != null && weekLogs[i]!.screenTimeHours > 0),
+        ];
+
         scoreWeek = weekLogs.map((log) {
           if (log == null) return 0.0;
+          if (_sameDay(log.logDate, today) && realScreen > 0) {
+            return _logScore(HabitLog(
+              id: log.id,
+              userId: log.userId,
+              logDate: log.logDate,
+              sleepHours: log.sleepHours,
+              exerciseMinutes: log.exerciseMinutes,
+              waterIntakeLiter: log.waterIntakeLiter,
+              screenTimeHours: realScreen,
+            ));
+          }
           return _logScore(log);
         }).toList();
 
@@ -778,9 +1036,22 @@ Respond with ONLY the JSON array.
         weekHasData = List.filled(7, false);
         weekHasDataByType.updateAll((_, _) => List.filled(7, false));
         scoreWeek = List.filled(7, 0.0);
-        if (realScreen > 0) {
-          final i = metrics.indexWhere((m) => m.type == HabitType.screenTime);
-          if (i != -1) metrics[i] = metrics[i].copyWith(current: realScreen);
+        final si = metrics.indexWhere((m) => m.type == HabitType.screenTime);
+        if (si != -1 && weekScreen.any((v) => v > 0)) {
+          final m = metrics[si];
+          metrics[si] = HabitMetric(
+            type: m.type,
+            title: m.title,
+            icon: m.icon,
+            color: m.color,
+            current: realScreen,
+            target: m.target,
+            unit: m.unit,
+            weekValues: [for (final v in weekScreen) v > 0 ? v : 0.0],
+            streak: m.streak,
+            lowerIsBetter: m.lowerIsBetter,
+          );
+          weekHasDataByType[HabitType.screenTime] = [for (final v in weekScreen) v > 0];
         }
         habitScore = 0;
       }
@@ -849,10 +1120,11 @@ Respond with ONLY the JSON array.
     double score = 0;
     for (final m in metrics) {
       final v = values[m.type];
-      if (v == null || m.type == HabitType.score || m.target <= 0) continue;
+      if (v == null || m.type == HabitType.score) continue;
+      final target = m.target > 0 ? m.target : defaultTargetFor(m.type);
       final progress = m.lowerIsBetter
-          ? (v <= m.target ? 1.0 : (2 - v / m.target).clamp(0.0, 1.0))
-          : (v / m.target).clamp(0.0, 1.0);
+          ? (v <= target ? 1.0 : (2 - v / target).clamp(0.0, 1.0))
+          : (v / target).clamp(0.0, 1.0);
       score += progress * _weightFor(m.type) * 100;
     }
     return score;
@@ -880,6 +1152,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
   HabitType _selectedChart = HabitType.sleep;
   final int _navIndex = 2; // Habits tab selected
   bool _refreshingInsights = false;
+  Timer? _screenTimer;
 
   static const _weekdayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
@@ -899,6 +1172,19 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
         }
       }
     });
+
+    // Keep today's screen time live while this page is open — the phone keeps
+    // accumulating usage, so refresh it periodically.
+    _screenTimer = Timer.periodic(const Duration(seconds: 45), (_) async {
+      final changed = await HabitRepository.refreshLiveScreenTime();
+      if (mounted && changed) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _screenTimer?.cancel();
+    super.dispose();
   }
 
   HabitMetric _metric(HabitType t) => HabitRepository.metrics.firstWhere((m) => m.type == t);
@@ -1316,6 +1602,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
               _buildHeader(),
               const SizedBox(height: 18),
               _buildSummaryCard(),
+              _buildUsageAccessNotice(),
               const SizedBox(height: 24),
               _sectionTitle(AppStrings.yourHabits),
               const SizedBox(height: 12),
@@ -1390,6 +1677,52 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
   }
 
   // ── 2. Today's Habit Summary ─────────────────────────────────────────
+  Widget _buildUsageAccessNotice() {
+    if (!HabitRepository.usageAccessDenied) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.timer_off_rounded, color: Color(0xFFF59E0B), size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Phone screen time is off — allow "Usage access" for CampusTwin to show your real screen time.',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppPalette.textSecondary(context),
+                height: 1.35,
+              ),
+            ),
+          ),
+          SizedBox(
+            height: 32,
+            child: TextButton(
+              onPressed: () async {
+                await HabitRepository.openUsageSettings();
+                await Future.delayed(const Duration(seconds: 1));
+                await HabitRepository.loadFromDb();
+                if (mounted) setState(() {});
+              },
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                backgroundColor: const Color(0xFFF59E0B).withValues(alpha: 0.18),
+                foregroundColor: const Color(0xFFB45309),
+              ),
+              child: const Text('Open Settings', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSummaryCard() {
     final sleep = _metric(HabitType.sleep);
     final water = _metric(HabitType.water);
@@ -1455,7 +1788,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
               const SizedBox(width: 10),
               Expanded(child: _summaryChip(Icons.fitness_center_rounded, '${exercise.current.toInt()}m', AppStrings.habitExercise)),
               const SizedBox(width: 10),
-              Expanded(child: _summaryChip(Icons.smartphone_rounded, '${screen.current}h', AppStrings.habitScreen)),
+              Expanded(child: _summaryChip(Icons.smartphone_rounded, '${HabitRepository.formatScreenTime(screen.current)}h', AppStrings.habitScreen)),
             ],
           ),
         ],
@@ -1558,10 +1891,10 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
 
     bool meetsStandard(double v) {
       if (_selectedChart == HabitType.score) return v >= standard;
-      return _metric(_selectedChart).isGoalMet(v);
+      final m = _metric(_selectedChart);
+      final target = m.target > 0 ? m.target : HabitRepository.defaultTargetFor(m.type);
+      return HabitRepository.goalMet(m.type, v, target);
     }
-    final goalMissing = _selectedChart != HabitType.score &&
-        _metric(_selectedChart).target <= 0;
 
     return _GlowCard(
       radius: 22,
@@ -1638,7 +1971,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           // ── Indicator ────────────────────────────────
-                          if (logged && !goalMissing)
+                          if (logged)
                             Text(met ? '😊' : '😞', style: const TextStyle(fontSize: 14))
                           else
                             Text('—',
@@ -1650,9 +1983,11 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                           // ── Value label ──────────────────────────────
                           Text(
                             logged
-                                ? (values[i] % 1 == 0
-                                    ? values[i].toInt().toString()
-                                    : values[i].toStringAsFixed(1))
+                                ? _selectedChart == HabitType.screenTime
+                                    ? HabitRepository.formatScreenTime(values[i])
+                                    : (values[i] % 1 == 0
+                                        ? values[i].toInt().toString()
+                                        : values[i].toStringAsFixed(1))
                                 : '',
                             style: TextStyle(
                               fontSize: 9.5,
@@ -1723,7 +2058,11 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                 Text(
                   daysWithData == 0
                       ? 'No data yet'
-                      : AppStrings.thisWeekAvg(avg.toStringAsFixed(1), unit),
+                      : AppStrings.thisWeekAvg(
+                          _selectedChart == HabitType.screenTime
+                              ? HabitRepository.formatScreenTime(avg)
+                              : avg.toStringAsFixed(1),
+                          unit),
                   style: TextStyle(fontSize: 11.5, color: AppPalette.textSecondary(context)),
                 ),
                 const Spacer(),
@@ -1950,7 +2289,11 @@ class _HabitCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.baseline,
                     textBaseline: TextBaseline.alphabetic,
                     children: [
-                      Text('${metric.current}', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: metric.color)),
+                      Text(
+                        metric.type == HabitType.screenTime
+                            ? HabitRepository.formatScreenTime(metric.current)
+                            : '${metric.current}',
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: metric.color)),
                       const SizedBox(width: 3),
                       if (goalSet)
                         Text(

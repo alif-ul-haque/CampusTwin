@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:campus_twin/app_settings.dart';
 import 'package:campus_twin/models/app_models.dart';
+import 'package:campus_twin/repositories/app_repositories.dart';
 import 'package:campus_twin/l10n.dart';
 import 'package:campus_twin/services/gemini_service.dart';
 import 'package:campus_twin/theme.dart';
@@ -36,9 +37,177 @@ class AssistantMessage {
 class _AssistantRepository {
   static List<AssistantMessage> chatMessages = [];
   static bool _historyLoaded = false;
-  static const _systemPrompt =
-      'You are Twinny, a friendly campus assistant for students. '
-      'Answer concisely and helpfully about academics, schedule, and campus life.';
+
+  /// Role + behaviour rules for Twinny. The per-user data snapshot built by
+  /// [_userContext] is appended after this before every Gemini call, so every
+  /// answer is grounded in this user's live system state.
+  static const _twinnyIdentity =
+      'You are Twinny, a friendly campus assistant built into the CampusTwin '
+      'app for this student. Below is the user\'s current live system data '
+      '(profile, courses, assignments, budget, study plan, habits, stress). '
+      'Rules:\n'
+      '- When the question is about the user\'s own life, schedule, money or '
+      'habits, answer from THIS data only and cite the actual numbers.\n'
+      '- If a section is empty or missing, say you don\'t have that info yet '
+      'instead of inventing it.\n'
+      '- Be concise, warm and practical.\n'
+      '- Answer in the same language the user writes in.';
+
+  static String _two(int n) => n.toString().padLeft(2, '0');
+  static String _money(double v) => v.round().toString();
+
+  /// Snapshots this user's whole system state from Firestore into a compact,
+  /// markdown-ish summary the Gemini system prompt can reference. Every domain
+  /// is fetched independently and fails silently (offline) so one bad query
+  /// never blocks a chat reply.
+  static Future<String> _userContext() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return '[Not signed in — no user data available.]';
+    final sb = StringBuffer();
+
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
+      if (snap.exists) {
+        final u = AppUser.fromMap(uid, snap.data() ?? {});
+        sb.writeln('[PROFILE]');
+        sb.writeln(
+            'Name: ${u.fullName.trim() == '' ? 'unknown' : u.fullName.trim()}');
+        sb.writeln(
+            'Department: ${u.department.isEmpty ? 'not set' : u.department}');
+        sb.writeln(
+            'Semester: ${u.semester}${u.academicLevel != null ? ' · academic level ${u.academicLevel}' : ''}');
+        sb.writeln(
+            'Student ID: ${u.studentId.isEmpty ? 'not set' : u.studentId}');
+        sb.writeln('Email: ${u.email}');
+        sb.writeln('');
+      }
+    } catch (_) {}
+
+    try {
+      final courses = await CourseRepository().fetchByUser(uid);
+      if (courses.isNotEmpty) {
+        sb.writeln('[COURSES]');
+        for (final c in courses) {
+          sb.writeln(
+              '- ${c.courseCode} ${c.courseTitle} · ${c.credit} cr · ${c.instructor} · attendance ${c.attendancePercent.toStringAsFixed(1)}%');
+        }
+        final assignments = await AssignmentRepository()
+            .fetchForCourses(courses.map((c) => c.id).toList());
+        final active = assignments
+            .where((a) => a.status != AssignmentStatus.done)
+            .toList()
+          ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
+        sb.writeln('');
+        sb.writeln('[ASSIGNMENTS]');
+        if (active.isEmpty) {
+          sb.writeln('None pending right now.');
+        } else {
+          for (final a in active.take(12)) {
+            final code = courses
+                .where((c) => c.id == a.courseId)
+                .map((c) => c.courseCode)
+                .firstOrNull ??
+                a.courseId;
+            final d = a.dueDate;
+            sb.writeln(
+                '- [$code] ${a.title} · due ${d.year}-${_two(d.month)}-${_two(d.day)} · ${a.difficulty.name} · ${a.status.name}');
+          }
+        }
+        sb.writeln('');
+      }
+    } catch (_) {}
+
+    try {
+      final now = DateTime.now();
+      final month = '${now.year}-${_two(now.month)}';
+      final budget = await BudgetRepository().fetchForMonth(uid, month);
+      final expenses = await ExpenseRepository().fetchForMonth(uid, month);
+      sb.writeln('[BUDGET — $month]');
+      if (budget != null) {
+        final spent =
+            (budget.totalBudget - budget.remainingBudget).clamp(0.0, budget.totalBudget);
+        sb.writeln(
+            'Monthly budget: ${_money(budget.totalBudget)} · spent: ${_money(spent)} · remaining: ${_money(budget.remainingBudget)}');
+      } else {
+        sb.writeln('No budget set for this month yet.');
+      }
+      if (expenses.isNotEmpty) {
+        final cats = await ExpenseCategoryRepository().fetchByUser(uid);
+        sb.writeln('Recent transactions:');
+        for (final e in expenses.take(8)) {
+          final name = cats
+              .where((c) => c.id == e.categoryId)
+              .map((c) => c.categoryName)
+              .firstOrNull ??
+              e.categoryId;
+          final d = e.expenseDate;
+          final sign = e.type == 'income' ? '+' : '-';
+          sb.writeln(
+              '- $sign${_money(e.amount)} · $name · ${d.year}-${_two(d.month)}-${_two(d.day)}${(e.note ?? '').isNotEmpty ? ' (${e.note})' : ''}');
+        }
+      }
+      sb.writeln('');
+    } catch (_) {}
+
+    try {
+      final plans = await StudyPlanRepository()
+          .fetchByUser(uid, orderBy: 'generated_date', descending: true, limit: 5);
+      sb.writeln('[STUDY PLAN]');
+      if (plans.isEmpty) {
+        sb.writeln('No study plan generated yet.');
+      } else {
+        for (final p in plans) {
+          final d = p.generatedDate;
+          sb.writeln(
+              '- Plan of ${d.year}-${_two(d.month)}-${_two(d.day)} · ${p.totalHours.toStringAsFixed(1)}h total · ${p.status.name}');
+        }
+      }
+      sb.writeln('');
+    } catch (_) {}
+
+    try {
+      final logs = await HabitLogRepository().fetchRecent(uid, days: 7);
+      final goals = await FirebaseFirestore.instance
+          .collection('habit_goals')
+          .doc(uid)
+          .get();
+      sb.writeln('[HABITS — last 7 days]');
+      if (goals.exists) {
+        final g = goals.data() ?? {};
+        sb.writeln(
+            'Goals: sleep ${(g['sleep_hours'] as num?)?.toStringAsFixed(1) ?? '7.5'}h · water ${(g['water_liters'] as num?)?.toStringAsFixed(1) ?? '2.5'}L · exercise ${(g['exercise_minutes'] as num?) ?? 30}min · screen ≤ ${(g['screen_time_hours'] as num?)?.toStringAsFixed(1) ?? '3.0'}h');
+      }
+      if (logs.isEmpty) {
+        sb.writeln('No habit logs yet.');
+      } else {
+        for (final l in logs.reversed) {
+          final d = l.logDate;
+          sb.writeln(
+              '- ${d.year}-${_two(d.month)}-${_two(d.day)}: sleep ${l.sleepHours.toStringAsFixed(1)}h · water ${l.waterIntakeLiter.toStringAsFixed(1)}L · exercise ${l.exerciseMinutes}min · screen ${l.screenTimeHours.toStringAsFixed(2)}h');
+        }
+      }
+      sb.writeln('');
+    } catch (_) {}
+
+    try {
+      final p = await StressPredictionRepository().fetchLatest(uid);
+      sb.writeln('[STRESS]');
+      if (p == null) {
+        sb.writeln('No stress prediction yet (computed from habit scores and on-device ML).');
+      } else {
+        final d = p.predictedAt;
+        sb.writeln(
+            'Latest: ${p.level} · score ${p.score}/100 · ${d.year}-${_two(d.month)}-${_two(d.day)}');
+        if (p.explanation.isNotEmpty) sb.writeln('Explanation: ${p.explanation}');
+      }
+    } catch (_) {}
+
+    final out = sb.toString().trim();
+    return out.isEmpty ? '[No user data available.]' : out;
+  }
 
   static String _greetingText() {
     final name = AppSettings.instance.profile.name.trim();
@@ -119,8 +288,13 @@ class _AssistantRepository {
     ));
     onUpdate();
 
-    final reply = await GeminiService.instance
-        .sendMessage(text, systemPrompt: _systemPrompt);
+    final context = await _userContext();
+    final reply = await GeminiService.instance.sendMessage(
+      text,
+      systemPrompt: '$_twinnyIdentity\n\n'
+          '=== THIS USER\'S CURRENT SYSTEM DATA ===\n'
+          '$context',
+    );
 
     chatMessages.add(AssistantMessage(
       id: 'a${chatMessages.length + 1}',

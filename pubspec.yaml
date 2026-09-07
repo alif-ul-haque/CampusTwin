@@ -48,3 +48,4 @@ flutter:
   assets:
     - .env
     - assets/Campus_Twin.png
+    - assets/stress_model.json

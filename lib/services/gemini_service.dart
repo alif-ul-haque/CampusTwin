@@ -9,7 +9,7 @@ class GeminiService {
 
   // TODO: Inject via .env or --dart-define. Never hardcode the key client-side.
   static const _apiKey = String.fromEnvironment('GEMINI_API_KEY');
-  static const _model = 'gemini-2.5-flash';
+  static const _model = 'gemini-3.5-flash-lite';
   static const _baseUrl =
       'https://generativelanguage.googleapis.com/v1beta/models';
 
