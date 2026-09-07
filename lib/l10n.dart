@@ -461,6 +461,38 @@ class AppStrings {
       _t('This week · avg $avg $unit', 'এই সপ্তাহ · গড় $avg $unit');
   static String get metLabel => _t('met', 'পূরণ');
   static String get belowLabel => _t('below', 'নিচে');
+
+  // ── Goals ──────────────────────────────────────────────────────────────
+  static String get setGoal => _t('Set goal', 'লক্ষ্য নির্ধারণ');
+  static String get changeGoal => _t('Change goal', 'লক্ষ্য পরিবর্তন');
+  static String get goalNotSet => _t('Goal not set', 'লক্ষ্য নির্ধারিত হয়নি');
+  static String get setGoalFirst => _t(
+    'Set your goal first to log data.',
+    'ডেটা লগ করতে আগে আপনার লক্ষ্য নির্ধারণ করুন।',
+  );
+  static String get goalTitle => _t('Set your goal', 'আপনার লক্ষ্য নির্ধারণ করুন');
+  static String goalValue(String unit) =>
+      _t('Daily goal ($unit)', 'দৈনিক লক্ষ্য ($unit)');
+  static String get saveGoal => _t('Save goal', 'লক্ষ্য সংরক্ষণ');
+  static String get goalSaved => _t('Goal updated!', 'লক্ষ্য আপডেট হয়েছে!');
+  static String goalMustBePositive(String unit) => _t(
+    'Enter a goal greater than 0 $unit.',
+    '০ $unit এর বেশি একটি লক্ষ্য লিখুন।',
+  );
+  static String goalTooHigh(double max, String unit) => _t(
+    'Goal cannot exceed $max $unit.',
+    'লক্ষ্য সর্বোচ্চ $max $unit হতে পারবে।',
+  );
+  static String get screenGoalTitle => _t('Screen Time Goal', 'স্ক্রিন সময় লক্ষ্য');
+  static String screenGoal80Body(double target, double v) => _t(
+    'You have used ${v.toStringAsFixed(1)} hrs — 80% of your ${target.toStringAsFixed(1)} hr screen time goal. Slow down a bit!',
+    'আপনি ${v.toStringAsFixed(1)} ঘণ্টা ব্যবহার করেছেন — ${target.toStringAsFixed(1)} ঘণ্টার স্ক্রিন লক্ষ্যের ৮০%। একটু বিরতি নিন!',
+  );
+  static String get screenLimitTitle => _t('Screen Time Limit Reached', 'স্ক্রিন সীমা অতিক্রম');
+  static String screenLimitBody(double target, double v) => _t(
+    'You crossed your ${target.toStringAsFixed(1)} hr screen time goal (${v.toStringAsFixed(1)} hrs). Time to put the phone down!',
+    'আপনি ${target.toStringAsFixed(1)} ঘণ্টার স্ক্রিন লক্ষ্য অতিক্রম করেছেন (${v.toStringAsFixed(1)} ঘণ্টা)। ফোন একটু দূরে রাখুন!',
+  );
   static String get dailyCheckIn => _t('Daily Check-In', 'দৈনিক চেক-ইন');
   static String checkedInDay(int day) =>
       _t('Checked in · Day $day', 'চেক-ইন · দিন $day');

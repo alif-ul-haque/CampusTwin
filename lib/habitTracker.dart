@@ -54,15 +54,38 @@ class HabitMetric {
     return (current / target).clamp(0.0, 1.0);
   }
 
-  bool get isOnTrack => lowerIsBetter ? current <= target : current >= target * 0.8;
+  /// Whether a logged [value] is considered a "happy" day for this habit.
+  ///
+  /// - sleep: within [80%, 120%] of the goal (too little OR too much = sad)
+  /// - water/exercise: at least 80% of the goal
+  /// - screen time: at or under the goal (crossing it = sad)
+  bool isGoalMet(double value) {
+    final t = target;
+    if (t <= 0) return false;
+    const eps = 1e-9;
+    switch (type) {
+      case HabitType.sleep:
+        final ratio = value / t;
+        return ratio >= 0.8 - eps && ratio <= 1.2 + eps;
+      case HabitType.water:
+      case HabitType.exercise:
+        return value / t >= 0.8 - eps;
+      case HabitType.screenTime:
+        return value <= t;
+      case HabitType.score:
+        return value >= t;
+    }
+  }
 
-  HabitMetric copyWith({double? current}) => HabitMetric(
+  bool get isOnTrack => isGoalMet(current);
+
+  HabitMetric copyWith({double? current, double? target}) => HabitMetric(
         type: type,
         title: title,
         icon: icon,
         color: color,
         current: current ?? this.current,
-        target: target,
+        target: target ?? this.target,
         unit: unit,
         weekValues: weekValues,
         streak: streak,
@@ -105,7 +128,7 @@ class HabitRepository {
       icon: Icons.bedtime_rounded,
       color: Color(0xFF6366F1),
       current: 0,
-      target: 8,
+      target: 0,
       unit: 'hrs',
       weekValues: [0, 0, 0, 0, 0, 0, 0],
       streak: 0,
@@ -116,7 +139,7 @@ class HabitRepository {
       icon: Icons.water_drop_rounded,
       color: Color(0xFF06B6D4),
       current: 0,
-      target: 3,
+      target: 0,
       unit: 'L',
       weekValues: [0, 0, 0, 0, 0, 0, 0],
       streak: 0,
@@ -127,7 +150,7 @@ class HabitRepository {
       icon: Icons.fitness_center_rounded,
       color: Color(0xFF10B981),
       current: 0,
-      target: 45,
+      target: 0,
       unit: 'min',
       weekValues: [0, 0, 0, 0, 0, 0, 0],
       streak: 0,
@@ -138,7 +161,7 @@ class HabitRepository {
       icon: Icons.smartphone_rounded,
       color: Color(0xFFF59E0B),
       current: 0,
-      target: 4,
+      target: 0,
       unit: 'hrs',
       weekValues: [0, 0, 0, 0, 0, 0, 0],
       streak: 0,
@@ -440,11 +463,53 @@ Respond with ONLY the JSON array.
     return metrics[i].current; // always return raw value, not ratio
   }
 
+  static double _dbNum(Object? v) => v is num ? v.toDouble() : 0.0;
+
   static void updateMetric(HabitType type, double value) {
     final i = metrics.indexWhere((m) => m.type == type);
     if (i == -1) return;
     metrics[i] = metrics[i].copyWith(current: value);
     habitScore = _computeHabitScore();
+  }
+
+  /// Maximum allowed goal value per habit.
+  static double maxGoalFor(HabitType type) => switch (type) {
+        HabitType.sleep => 15,
+        HabitType.water => 5,
+        HabitType.exercise => 180,
+        HabitType.screenTime => 8,
+        HabitType.score => 0,
+      };
+
+  /// Saves a user goal: updates the in-memory target and persists it to the
+  /// `habit_goals/{uid}` doc. Returns true on success.
+  static Future<bool> saveGoal(HabitType type, double value) async {
+    final i = metrics.indexWhere((m) => m.type == type);
+    if (i == -1) return false;
+    final trimmed = value.clamp(0.1, maxGoalFor(type)).toDouble();
+    metrics[i] = metrics[i].copyWith(target: trimmed);
+    habitScore = _computeHabitScore();
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return false;
+      await FirebaseFirestore.instance.collection('habit_goals').doc(uid).set({
+        'user_id': uid,
+        'sleep_hours': _targetOf(HabitType.sleep),
+        'water_liters': _targetOf(HabitType.water),
+        'exercise_minutes': _targetOf(HabitType.exercise),
+        'screen_time_hours': _targetOf(HabitType.screenTime),
+        'updated_at': Timestamp.now(),
+      }, SetOptions(merge: true));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static double _targetOf(HabitType type) {
+    final i = metrics.indexWhere((m) => m.type == type);
+    if (i == -1) return 0;
+    return metrics[i].target;
   }
 
   static Future<void> persistToday() async {
@@ -589,8 +654,12 @@ Respond with ONLY the JSON array.
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
 
-      // Fetch screen time and logs in parallel
+      // Fetch screen time, goals and logs in parallel
       final screenFuture = fetchRealScreenTime();
+      final goalsFuture = FirebaseFirestore.instance
+          .collection('habit_goals')
+          .doc(uid)
+          .get();
       final snap = await FirebaseFirestore.instance
           .collection('habit_logs')
           .where('user_id', isEqualTo: uid)
@@ -598,6 +667,27 @@ Respond with ONLY the JSON array.
           .limit(30)
           .get();
       final realScreen = await screenFuture;
+
+      // Apply the user's saved goals to the metric targets (0 = not set yet)
+      try {
+        final goalsSnap = await goalsFuture;
+        if (goalsSnap.exists) {
+          final g = goalsSnap.data() ?? const {};
+          for (final type in [HabitType.sleep, HabitType.water, HabitType.exercise, HabitType.screenTime]) {
+            final v = switch (type) {
+              HabitType.sleep => _dbNum(g['sleep_hours']),
+              HabitType.water => _dbNum(g['water_liters']),
+              HabitType.exercise => _dbNum(g['exercise_minutes']),
+              HabitType.screenTime => _dbNum(g['screen_time_hours']),
+              HabitType.score => 0.0,
+            };
+            if (v > 0) {
+              final i = metrics.indexWhere((m) => m.type == type);
+              if (i != -1) metrics[i] = metrics[i].copyWith(target: v);
+            }
+          }
+        }
+      } catch (_) {}
 
       if (snap.docs.isNotEmpty) {
         final allLogs = snap.docs.map((d) => HabitLog.fromMap(d.id, d.data())).toList();
@@ -707,7 +797,43 @@ Respond with ONLY the JSON array.
         checkedInToday = !ci.checkinDate.isBefore(today);
         checkInStreak = ci.dayNumber;
       }
+
+      _notifyScreenTimeGoal();
     } catch (_) {}
+  }
+
+  static final Set<String> _notifiedScreenKeys = {};
+
+  /// Fires in-app notifications when today's screen time reaches 80% of the
+  /// goal (normal alert) or crosses 100% (red critical alert). Deduped per
+  /// threshold/day so repeated [loadFromDb] calls don't spam.
+  static void _notifyScreenTimeGoal() {
+    final now = DateTime.now();
+    final dayKey = '${now.year}-${now.month}-${now.day}';
+    final i = metrics.indexWhere((m) => m.type == HabitType.screenTime);
+    if (i == -1) return;
+    final m = metrics[i];
+    if (m.target <= 0) return; // user hasn't set a screen-time goal yet
+    final v = m.current;
+    if (v >= 0.8 * m.target && !_notifiedScreenKeys.contains('80-$dayKey')) {
+      _notifiedScreenKeys.add('80-$dayKey');
+      AppSettings.instance.pushNotification(
+        AppStrings.screenGoalTitle,
+        AppStrings.screenGoal80Body(m.target, v),
+        icon: Icons.smartphone_rounded,
+        color: const Color(0xFFF59E0B),
+      );
+    }
+    if (v > m.target && !_notifiedScreenKeys.contains('100-$dayKey')) {
+      _notifiedScreenKeys.add('100-$dayKey');
+      AppSettings.instance.pushNotification(
+        AppStrings.screenLimitTitle,
+        AppStrings.screenLimitBody(m.target, v),
+        icon: Icons.phone_disabled_rounded,
+        color: const Color(0xFFEF4444),
+        critical: true,
+      );
+    }
   }
 
   /// Computes a 0–100 score for a stored log using the weighted formula.
@@ -779,6 +905,11 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
 
   // ── Log / edit bottom sheet ──────────────────────────────────────────────
   void _openLogSheet(HabitMetric metric) {
+    // A goal must be set before any data can be logged for the day.
+    if (metric.target <= 0) {
+      _openGoalSheet(metric, requireFirst: true);
+      return;
+    }
     final controller = TextEditingController(text: metric.current.toString());
     showModalBottomSheet(
       context: context,
@@ -868,6 +999,137 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
           ),
         );
       },
+    );
+  }
+
+  /// Bottom sheet to set/change a habit goal. When [requireFirst] is true the
+  /// user is told that logging is blocked until a goal exists.
+  Future<void> _openGoalSheet(HabitMetric metric, {bool requireFirst = false}) async {
+    final controller = TextEditingController(
+        text: metric.target > 0 ? metric.target.toStringAsFixed(0) : '');
+    final maxGoal = HabitRepository.maxGoalFor(metric.type);
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(22, 14, 22, 26),
+            decoration: BoxDecoration(
+              color: AppPalette.card(context),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(color: AppPalette.border(context), borderRadius: BorderRadius.circular(4)),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: metric.color.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(Icons.adjust_rounded, color: metric.color, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(AppStrings.goalTitle,
+                            style: TextStyle(color: AppPalette.textPrimary(context), fontSize: 16, fontWeight: FontWeight.w800)),
+                        Text(metric.title,
+                            style: TextStyle(fontSize: 12, color: AppPalette.textSecondary(context))),
+                      ],
+                    ),
+                  ],
+                ),
+                if (requireFirst) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline_rounded, size: 18, color: Color(0xFFF59E0B)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(AppStrings.setGoalFirst,
+                              style: TextStyle(
+                                  fontSize: 12.5, fontWeight: FontWeight.w600, color: AppPalette.textPrimary(context))),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                AppFieldLabel(AppStrings.goalValue(metric.unit)),
+                const SizedBox(height: 10),
+                AppTextField(
+                  controller: controller,
+                  hint: AppStrings.egValue(maxGoal.toStringAsFixed(0)),
+                  icon: Icons.adjust_rounded,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                ),
+                const SizedBox(height: 6),
+                Text('Max: $maxGoal ${metric.unit}',
+                    style: TextStyle(fontSize: 11, color: AppPalette.textSecondary(context).withValues(alpha: 0.8))),
+                const SizedBox(height: 20),
+                AppPrimaryButton(
+                  label: AppStrings.saveGoal,
+                  onPressed: () async {
+                    final v = double.tryParse(controller.text.trim());
+                    if (v == null || v <= 0) {
+                      await _showGoalError(AppStrings.goalMustBePositive(metric.unit), metric);
+                      return;
+                    }
+                    if (v > maxGoal) {
+                      await _showGoalError(AppStrings.goalTooHigh(maxGoal, metric.unit), metric);
+                      return;
+                    }
+                    Navigator.of(sheetContext).pop();
+                    await HabitRepository.saveGoal(metric.type, v);
+                    await HabitRepository.persistToday();
+                    await HabitRepository.loadFromDb();
+                    if (mounted) setState(() {});
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(AppStrings.goalSaved),
+                      behavior: SnackBarBehavior.floating,
+                    ));
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showGoalError(String message, HabitMetric metric) {
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => _ThresholdWarningDialog(
+        metricTitle: metric.title,
+        metricIcon: metric.icon,
+        metricColor: metric.color,
+        message: message,
+      ),
     );
   }
 
@@ -1229,6 +1491,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
             child: _HabitCard(
               metric: m,
               onEdit: () => _openLogSheet(m),
+              onEditGoal: () => _openGoalSheet(m),
               showEditButton: m.type != HabitType.screenTime,
             ),
           )).toList(),
@@ -1263,21 +1526,18 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
     List<double> values;
     Color color;
     String unit;
-    bool lowerIsBetter;
     double standard;
 
     if (_selectedChart == HabitType.score) {
       values = HabitRepository.scoreWeek;
       color = AppColors.purple;
       unit = '%';
-      lowerIsBetter = false;
       standard = 70; // ≥70% habit score is considered on-track
     } else {
       final m = _metric(_selectedChart);
       values = m.weekValues;
       color = m.color;
       unit = m.unit;
-      lowerIsBetter = m.lowerIsBetter;
       standard = m.target;
     }
 
@@ -1296,8 +1556,12 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
     // Average only over days with real data
     final avg = daysWithData == 0 ? 0.0 : dataValues.reduce((a, b) => a + b) / daysWithData;
 
-    bool meetsStandard(double v) =>
-        lowerIsBetter ? v <= standard : v >= standard * 0.8;
+    bool meetsStandard(double v) {
+      if (_selectedChart == HabitType.score) return v >= standard;
+      return _metric(_selectedChart).isGoalMet(v);
+    }
+    final goalMissing = _selectedChart != HabitType.score &&
+        _metric(_selectedChart).target <= 0;
 
     return _GlowCard(
       radius: 22,
@@ -1374,7 +1638,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           // ── Indicator ────────────────────────────────
-                          if (logged)
+                          if (logged && !goalMissing)
                             Text(met ? '😊' : '😞', style: const TextStyle(fontSize: 14))
                           else
                             Text('—',
@@ -1618,12 +1882,19 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
 class _HabitCard extends StatelessWidget {
   final HabitMetric metric;
   final VoidCallback onEdit;
+  final VoidCallback onEditGoal;
   final bool showEditButton;
-  const _HabitCard({required this.metric, required this.onEdit, this.showEditButton = true});
+  const _HabitCard({
+    required this.metric,
+    required this.onEdit,
+    required this.onEditGoal,
+    this.showEditButton = true,
+  });
 
   @override
   Widget build(BuildContext context) {
     final pct = (metric.progress * 100).round();
+    final goalSet = metric.target > 0;
     final statusColor = metric.isOnTrack ? const Color(0xFF10B981) : const Color(0xFFF59E0B);
     return _GlowCard(
       radius: 20,
@@ -1651,12 +1922,27 @@ class _HabitCard extends StatelessWidget {
                       Expanded(
                         child: Text(metric.title, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: AppPalette.textPrimary(context))),
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)),
-                        child: Text(metric.isOnTrack ? AppStrings.onTrack : AppStrings.needsFocus,
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: statusColor)),
-                      ),
+                      if (goalSet)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)),
+                          child: Text(metric.isOnTrack ? AppStrings.onTrack : AppStrings.needsFocus,
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: statusColor)),
+                        )
+                      else
+                        InkWell(
+                          onTap: onEditGoal,
+                          borderRadius: BorderRadius.circular(999),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: AppColors.purple.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(AppStrings.setGoal,
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.purple)),
+                          ),
+                        ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -1666,12 +1952,29 @@ class _HabitCard extends StatelessWidget {
                     children: [
                       Text('${metric.current}', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: metric.color)),
                       const SizedBox(width: 3),
-                      Text(
-                        AppSettings.instance.locale.languageCode == 'bn'
-                            ? '${metric.unit} / ${metric.target.toInt()}${metric.unit} লক্ষ্য'
-                            : '${metric.unit} / ${metric.target.toInt()}${metric.unit} goal',
-                        style: TextStyle(fontSize: 12, color: AppPalette.textSecondary(context)),
-                      ),
+                      if (goalSet)
+                        Text(
+                          AppSettings.instance.locale.languageCode == 'bn'
+                              ? '${metric.unit} / ${metric.target.toInt()}${metric.unit} লক্ষ্য'
+                              : '${metric.unit} / ${metric.target.toInt()}${metric.unit} goal',
+                          style: TextStyle(fontSize: 12, color: AppPalette.textSecondary(context)),
+                        )
+                      else
+                        GestureDetector(
+                          onTap: onEditGoal,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(AppStrings.goalNotSet,
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: AppPalette.textSecondary(context),
+                                      decoration: TextDecoration.underline)),
+                              const SizedBox(width: 4),
+                              Icon(Icons.edit_rounded, size: 12, color: AppPalette.textSecondary(context)),
+                            ],
+                          ),
+                        ),
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -1690,6 +1993,17 @@ class _HabitCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
+            // Goal edit (pencil) — change the goal anytime
+            GestureDetector(
+              onTap: onEditGoal,
+              child: Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(color: metric.color.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(10)),
+                child: Icon(Icons.edit_rounded, color: metric.color, size: 17),
+              ),
+            ),
+            const SizedBox(width: 6),
             if (showEditButton)
               GestureDetector(
                 onTap: onEdit,
