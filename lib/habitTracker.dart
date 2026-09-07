@@ -346,8 +346,12 @@ class HabitRepository {
   /// insights refresh once per day on the first open (or always with
   /// [forceFresh]).
   static Future<void> loadInsights({bool forceFresh = false}) async {
-    insights = _staticInsights();
-    insightsLoaded = true;
+    // Don't preset static placeholder insights here — that used to make the
+    // UI flash 3 generic insights before the real (restored or freshly
+    // generated) ones were ready, since it also set insightsLoaded = true
+    // right away and skipped the loading spinner entirely.
+    insightsLoaded = false;
+    insights = [];
     lastPredictionAt = null;
     _savedMetricsSnapshot = '';
     // On-device Random Forest powers the stress prediction + AI insights.
@@ -363,6 +367,12 @@ class HabitRepository {
     if (stale) {
       await generateInsightsFromAi();
     }
+    // Only fall back to generic static insights if both the DB restore and
+    // the AI generation above genuinely came up empty.
+    if (insights.isEmpty) {
+      insights = _staticInsights();
+    }
+    insightsLoaded = true;
   }
 
   /// (Re)computes the blended ML prediction from the current `metrics` values.

@@ -198,10 +198,18 @@ class MainActivity : FlutterActivity() {
                 fgType -> foregroundSince[pkg] = event.timeStamp
                 bgType -> {
                     val start = foregroundSince.remove(pkg)
-                    // App was already foregrounded before our window started
-                    // (e.g. usage carried over from before midnight).
-                    val diff = event.timeStamp - (start ?: startMs)
-                    if (diff > 0) totalMs += diff
+                    if (start != null) {
+                        val diff = event.timeStamp - start
+                        if (diff > 0) totalMs += diff
+                    }
+                    // If there's no matching foreground event, this app's
+                    // session actually began before our query window (e.g.
+                    // before midnight, from launcher/system UI sitting in the
+                    // foreground overnight). We have no way to know the real
+                    // start time, so we deliberately skip it instead of
+                    // guessing "since midnight" — that guess was exactly what
+                    // caused a bogus ~0.5-0.6h baseline to appear every day
+                    // before any real usage had happened.
                 }
             }
         }
