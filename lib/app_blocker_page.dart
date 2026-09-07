@@ -93,6 +93,14 @@ class _AppBlockerPageState extends State<AppBlockerPage>
   void _toggle(String pkg) =>
       setState(() => _blocked.contains(pkg) ? _blocked.remove(pkg) : _blocked.add(pkg));
 
+  bool get _allBlocked =>
+      _apps.isNotEmpty && _blocked.length == _apps.length;
+
+  void _selectAll() =>
+      setState(() => _blocked.addAll(_apps.map((a) => a.packageName)));
+
+  void _clearAll() => setState(() => _blocked.clear());
+
   void _toggleSession() {
     if (_blocked.isEmpty && !_sessionActive) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -175,6 +183,18 @@ class _AppBlockerPageState extends State<AppBlockerPage>
         const SizedBox(height: 24),
         _SectionHeader(title: AppStrings.installedApps,
             trailing: AppStrings.appsFound(_apps.length)),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            const Spacer(),
+            _SelectAllButton(
+              allSelected: _allBlocked,
+              enabled: _apps.isNotEmpty,
+              onSelectAll: _selectAll,
+              onClear: _clearAll,
+            ),
+          ],
+        ),
         const SizedBox(height: 12),
         _AppGrid(apps: _apps, blocked: _blocked, onToggle: _toggle),
         const SizedBox(height: 24),
@@ -459,6 +479,72 @@ class _SectionHeader extends StatelessWidget {
     Text(trailing, style: TextStyle(color: AppPalette.textSecondary(context),
         fontSize: 12, fontWeight: FontWeight.w500)),
   ]);
+}
+
+// =============================================================================
+// SELECT ALL / CLEAR toggle
+// =============================================================================
+
+class _SelectAllButton extends StatelessWidget {
+  final bool allSelected;
+  final bool enabled;
+  final VoidCallback onSelectAll;
+  final VoidCallback onClear;
+  const _SelectAllButton({
+    required this.allSelected,
+    required this.enabled,
+    required this.onSelectAll,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = allSelected
+        ? AppColors.purple.withValues(alpha: 0.12)
+        : (isDark ? const Color(0xFF2A2A3E) : const Color(0xFFF3F4F6));
+    final fg = allSelected
+        ? AppColors.purple
+        : AppPalette.textPrimary(context);
+    return InkWell(
+      onTap: enabled ? (allSelected ? onClear : onSelectAll) : null,
+      borderRadius: BorderRadius.circular(20),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: enabled
+                ? AppColors.purple.withValues(alpha: 0.4)
+                : Colors.transparent,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              allSelected
+                  ? Icons.deselect_rounded
+                  : Icons.select_all_rounded,
+              size: 15,
+              color: enabled ? fg : fg.withValues(alpha: 0.4),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              allSelected ? AppStrings.clearAll : AppStrings.selectAll,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: enabled ? fg : fg.withValues(alpha: 0.4),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // =============================================================================

@@ -876,7 +876,7 @@ class _HabitTrackerPageState extends State<HabitTrackerPage> with TickerProvider
   String? _validateThreshold(HabitType type, double value) {
     switch (type) {
       case HabitType.sleep:
-        if (value > 15) {
+        if (value > 24) {
           return AppStrings.thresholdSleepHigh(value);
         }
         if (value < 0) return AppStrings.thresholdSleepNegative;

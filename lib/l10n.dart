@@ -383,11 +383,9 @@ class AppStrings {
   // ── Threshold validation ────────────────────────────────────────────────
   static String thresholdSleepHigh(double v) => _t(
     'Sleep duration of ${v.toStringAsFixed(1)} hrs is too high.\n\n'
-        'Sleeping more than 15 hours a day may indicate hypersomnia or an '
-        'underlying health condition. Please enter a realistic value (max 15 hrs).',
+        'A day has only 24 hours. Please enter a realistic value (max 24 hrs).',
     'ঘুমের সময় ${v.toStringAsFixed(1)} ঘণ্টা অনেক বেশি।\n\n'
-        'দিনে ১৫ ঘণ্টার বেশি ঘুম হাইপারসোমনিয়া বা অন্য স্বাস্থ্যগত সমস্যার '
-        'ইঙ্গিত দিতে পারে। অনুগ্রহ করে একটি বাস্তবসম্মত মান দিন (সর্বোচ্চ ১৫ ঘণ্টা)।',
+        'একদিনে মোটে ২৪ ঘণ্টা থাকে। অনুগ্রহ করে একটি বাস্তবসম্মত মান দিন (সর্বোচ্চ ২৪ ঘণ্টা)।',
   );
   static String thresholdWaterHigh(double v) => _t(
     'Water intake of ${v.toStringAsFixed(1)} L is dangerously high.\n\n'
@@ -652,6 +650,8 @@ class AppStrings {
   static String get installedApps => _t('Installed Apps', 'ইনস্টল করা অ্যাপ');
   static String appsFound(int count) =>
       _t('$count found', '$countটি পাওয়া গেছে');
+  static String get selectAll => _t('Select All', 'সব নির্বাচন করুন');
+  static String get clearAll => _t('Clear', 'সব মুছুন');
   static String get usageAccessTitle =>
       _t('Usage Access Required', 'ব্যবহার অ্যাক্সেস প্রয়োজন');
   static String get usageAccessBody => _t(
